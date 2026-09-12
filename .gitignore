@@ -1,0 +1,5 @@
+node_modules
+.screenshots/
+.claude/settings.local.json
+.env
+.env.local

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0f1115">
+<title>Jarvis</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%233987e5'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%230f1115'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="app.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/15.0.12/marked.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <button class="iconbtn" id="back" hidden aria-label="voltar">‹</button>
+  <a class="brand" href="#/">JARVIS</a>
+  <span class="crumb" id="crumb"></span>
+  <span class="spacer"></span>
+  <span class="badge" id="badge-live" title="sessões rodando / limite">0/2</span>
+  <button class="iconbtn" id="new-session" aria-label="nova sessão">+</button>
+</header>
+<nav class="side" aria-label="principal">
+  <a href="#/" data-nav="home"><span class="ico">◉</span>Início</a>
+  <a href="#/sessions" data-nav="sessions"><span class="ico">▤</span>Sessões</a>
+  <a href="#/projects" data-nav="projects"><span class="ico">⌂</span>Projetos</a>
+  <a href="#/plans" data-nav="plans"><span class="ico">⛔</span>Planos</a>
+  <div class="side-foot" id="side-foot"></div>
+</nav>
+<main id="view" class="view"></main>
+<nav class="tabbar" aria-label="principal">
+  <a href="#/" data-nav="home"><span class="ico">◉</span>Início</a>
+  <a href="#/sessions" data-nav="sessions"><span class="ico">▤</span>Sessões</a>
+  <a href="#/projects" data-nav="projects"><span class="ico">⌂</span>Projetos</a>
+  <a href="#/plans" data-nav="plans"><span class="ico">⛔</span>Planos</a>
+</nav>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<dialog id="dlg-session">
+  <form method="dialog" id="form-session">
+    <h3>Nova sessão</h3>
+    <label>Projeto / cwd<select id="ns-project"></select></label>
+    <label>cwd (livre)<input id="ns-cwd" placeholder="/home/user/code/…" autocomplete="off"></label>
+    <div class="row2">
+      <label>Permissões<select id="ns-mode">
+        <option value="default">default (pergunta)</option>
+        <option value="acceptEdits">acceptEdits</option>
+        <option value="plan">plan</option>
+        <option value="auto">auto</option>
+        <option value="bypassPermissions">bypass</option>
+      </select></label>
+      <label>Modelo<select id="ns-model"><option value="">padrão</option></select></label>
+    </div>
+    <label>Primeira mensagem (opcional)<textarea id="ns-prompt" rows="3"></textarea></label>
+    <menu>
+      <button type="button" class="btn" value="cancel" id="ns-cancel">cancelar</button>
+      <button type="submit" class="btn primary">abrir</button>
+    </menu>
+  </form>
+</dialog>
+<script type="module" src="app.js"></script>
+</body>
+</html>

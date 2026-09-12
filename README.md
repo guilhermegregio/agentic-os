@@ -6,7 +6,7 @@ mobile-first. O SDK roda o mesmo engine do Claude Code CLI (binário resolvido v
 skills, hooks, settings, MCPs do `cwd` escolhido, e o login claude.ai já feito no CLI.
 
 Desenvolvido com o ciclo `kb dev` (plano em `30-plans/jarvis-agenticos/` no vault do `kb`).
-Contratos de comportamento: `<vault>/10-projects/agentic-os/behaviors/*.feature` no vault
+Contratos de comportamento: `<vault>/10-projects/agentic-os/behaviors/*.feature.md` no vault
 do `kb` (congelam com `kb dev freeze`).
 
 ## Rodar
@@ -42,7 +42,7 @@ de agentes ficam vazios (o chat, as sessões e o painel de custos funcionam sozi
   `<vault>/30-plans/<slug>/` (planos, tasks), e faz shell-out em `kb dev`
   para `check`/`freeze`/`unfreeze`.
 - **Contratos** vêm da casa do projeto no vault: `<vault>/10-projects/<projeto>/behaviors/`.
-  Uma entrada relativa de `contracts:` (ex.: `agentic-os/behaviors/x.feature`) resolve
+  Uma entrada relativa de `contracts:` (ex.: `agentic-os/behaviors/x.feature.md`) resolve
   primeiro em `<vault do plano>/10-projects/`; se não existir lá, cai no repo do projeto
   e no worktree do plano e vem marcada `legacy: true`. Entrada absoluta ou com `~` é
   usada como está. Freeze/drift batem com `~/.local/state/kb/frozen-contracts.json`

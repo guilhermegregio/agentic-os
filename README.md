@@ -1,4 +1,4 @@
-# jarvis — agenticOS sobre o Claude Agent SDK
+# agentic-os — agenticOS sobre o Claude Agent SDK
 
 Servidor Node que embrulha `@anthropic-ai/claude-agent-sdk` e expõe uma UI web
 mobile-first. O SDK roda o mesmo engine do Claude Code CLI (binário resolvido via
@@ -6,7 +6,8 @@ mobile-first. O SDK roda o mesmo engine do Claude Code CLI (binário resolvido v
 skills, hooks, settings, MCPs do `cwd` escolhido, e o login claude.ai já feito no CLI.
 
 Desenvolvido com o ciclo `kb dev` (plano em `30-plans/jarvis-agenticos/` no vault do `kb`).
-Contrato de comportamento: `behaviors.feature` (congela com `kb dev freeze`).
+Contratos de comportamento: `<vault>/10-projects/agentic-os/behaviors/*.feature` no vault
+do `kb` (congelam com `kb dev freeze`).
 
 ## Rodar
 
@@ -31,15 +32,21 @@ funciona num clone limpo sem `kb`, `herdr` ou login do CLI. Com o servidor real,
 
 ## Dependências do harness
 
-O Jarvis **não é genérico**: ele é o shell de um harness pessoal e lê o estado dele
+O agentic-os **não é genérico**: ele é o shell de um harness pessoal e lê o estado dele
 direto do disco. Sem essas peças, a aba de projetos, o console do devflow e a frota
 de agentes ficam vazios (o chat, as sessões e o painel de custos funcionam sozinhos).
 
 - **`kb` CLI** (obrigatório para projetos/planos) — engine em
   [gregio-marketplace](https://github.com/guilhermegregio/gregio-marketplace) (`cli/kb`).
-  O Jarvis lê `~/.config/kb/config.json` (projetos, grupos, vaults) e
-  `<vault>/30-plans/<slug>/` (planos, tasks, contratos), e faz shell-out em `kb dev`
+  O agentic-os lê `~/.config/kb/config.json` (projetos, grupos, vaults) e
+  `<vault>/30-plans/<slug>/` (planos, tasks), e faz shell-out em `kb dev`
   para `check`/`freeze`/`unfreeze`.
+- **Contratos** vêm da casa do projeto no vault: `<vault>/10-projects/<projeto>/behaviors/`.
+  Uma entrada relativa de `contracts:` (ex.: `agentic-os/behaviors/x.feature`) resolve
+  primeiro em `<vault do plano>/10-projects/`; se não existir lá, cai no repo do projeto
+  e no worktree do plano e vem marcada `legacy: true`. Entrada absoluta ou com `~` é
+  usada como está. Freeze/drift batem com `~/.local/state/kb/frozen-contracts.json`
+  pelo path resolvido.
 - **`herdr`** (recomendado) — multiplexador de terminais/agentes. Quando `HERDR_ENV=1`,
   o dashboard lista a frota (`herdr agent list`) e o handoff web → CLI abre um pane
   já rodando `claude --resume`. Fora dele, o handoff só devolve o comando.

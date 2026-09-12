@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, isAbsolute, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { KB_CONFIG, KB_STATE_DIR } from './config.js'
 
@@ -214,6 +215,11 @@ export interface PlanRow {
   openGates: number
   frozen: Array<{ file: string; frozenAt?: string }>
   contracts: string[]
+  /**
+   * `contracts` resolvidos: path absoluto, existência e `legacy` (fora do vault).
+   * `warning` é o aviso textual para contrato legado ou ausente.
+   */
+  contractFiles: Array<ResolvedContract & { warning?: string }>
   /** URL do protótipo (frontmatter `prototype_url`), se o plano tem gate de layout. */
   prototypeUrl?: string
   worktree?: string
@@ -240,6 +246,55 @@ async function frozenContracts(): Promise<FrozenEntry[]> {
   } catch {
     return []
   }
+}
+
+export interface ResolvedContract {
+  /** Entrada como está no `contracts:` do plano. */
+  file: string
+  /** Path absoluto resolvido (o primeiro candidato quando nenhum existe). */
+  path: string
+  exists: boolean
+  /** true quando resolveu fora de `<vault>/10-projects/` (repo ou worktree — legado). */
+  legacy: boolean
+}
+
+const expandHome = (p: string) => (p.startsWith('~/') ? join(homedir(), p.slice(2)) : p === '~' ? homedir() : p)
+
+/**
+ * Resolve uma entrada de `contracts:`. Relativa: casa do projeto no vault do plano
+ * (`<vault>/10-projects/<entrada>`) primeiro; depois repo do projeto e worktree do
+ * plano, que são o layout legado. Absoluta ou `~`: usada como está.
+ */
+export function resolveContract(vaultPath: string, entry: string, repoPath?: string, worktree?: string): ResolvedContract {
+  const home = resolve(vaultPath, '10-projects')
+  const candidates =
+    isAbsolute(entry) || entry.startsWith('~')
+      ? [resolve(expandHome(entry))]
+      : [
+          join(home, entry),
+          ...(repoPath ? [resolve(repoPath, entry)] : []),
+          ...(worktree ? [resolve(expandHome(worktree), entry)] : []),
+        ]
+  const path = candidates.find((c) => existsSync(c)) ?? candidates[0]
+  const legacy = !(path === home || path.startsWith(home + sep))
+  return { file: entry, path, exists: existsSync(path), legacy }
+}
+
+export const contractWarning = (c: ResolvedContract) =>
+  !c.exists
+    ? 'contrato não encontrado'
+    : c.legacy
+      ? 'contrato legado: fora de <vault>/10-projects/<projeto>/behaviors/'
+      : undefined
+
+/** Entrada do índice de freeze do kb que corresponde ao contrato resolvido. */
+export function frozenEntryFor<T extends { plan: string; file: string }>(entries: T[], slug: string, c: ResolvedContract): T | undefined {
+  const mine = entries.filter((f) => f.plan === slug)
+  return (
+    mine.find((f) => resolve(expandHome(f.file)) === c.path) ??
+    mine.find((f) => f.file === c.file) ??
+    mine.find((f) => basename(f.file) === basename(c.file))
+  )
 }
 
 async function readTasks(dir: string): Promise<PlanTask[]> {
@@ -355,6 +410,11 @@ export async function plans(includeArchived = false): Promise<PlanRow[]> {
           .filter((f) => f.plan === slug)
           .map((f) => ({ file: f.file, frozenAt: f.frozen_at })),
         contracts: asArr(fm.contracts),
+        contractFiles: asArr(fm.contracts).map((c) => {
+          const repo = cfg.projects.find((p) => asArr(fm.projects).includes(p.name))
+          const r = resolveContract(vault.path, c, repo?.path, asStr(fm.worktree))
+          return { ...r, warning: contractWarning(r) }
+        }),
         prototypeUrl: asStr(fm.prototype_url),
         worktree: asStr(fm.worktree),
         approvedBy: asStr(fm.approved_by),

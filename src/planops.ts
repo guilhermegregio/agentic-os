@@ -3,11 +3,10 @@ import { createHash } from 'node:crypto'
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createConnection } from 'node:net'
-import { homedir } from 'node:os'
-import { basename, isAbsolute, join } from 'node:path'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { KB_STATE_DIR, OPERATOR, PROTOTYPES_APPS_DIR, PROTOTYPES_PROJECT } from './config.js'
-import { kbConfig, parseFrontmatter, type FmValue } from './harness.js'
+import { contractWarning, frozenEntryFor, kbConfig, parseFrontmatter, resolveContract, type FmValue } from './harness.js'
 
 /**
  * Operações do console do devflow. Regra: o Jarvis só muda o que um humano mudaria
@@ -36,7 +35,7 @@ export interface PlanFile {
 
 /** Todos os markdowns do plano: _plan.md, tasks/*, execution/* (mais recente primeiro). */
 export async function files(vaultName: string, slug: string) {
-  const { dir } = await planDir(vaultName, slug)
+  const { vault, dir } = await planDir(vaultName, slug)
   const read = async (rel: string): Promise<PlanFile> => {
     const markdown = await readFile(join(dir, rel), 'utf8')
     return { name: rel, path: join(dir, rel), markdown, fm: parseFrontmatter(markdown).fm }
@@ -54,7 +53,7 @@ export async function files(vaultName: string, slug: string) {
   } catch {
     /* sem log */
   }
-  return { dir, plan, tasks, execution }
+  return { vault, dir, plan, tasks, execution }
 }
 
 function setFm(text: string, key: string, value: string): string {
@@ -121,40 +120,44 @@ async function frozenEntries(): Promise<FrozenEntry[]> {
   }
 }
 
-const expand = (p: string) => (p.startsWith('~/') ? join(homedir(), p.slice(2)) : p)
-
-/** Contratos (`contracts:`) do plano com conteúdo, estado de freeze e drift. */
+/**
+ * Contratos (`contracts:`) do plano com conteúdo, estado de freeze e drift. Entrada
+ * relativa resolve primeiro na casa do projeto no vault do plano; repo/worktree ficam
+ * como legado (`legacy: true`). Contrato ausente vem com `exists: false`.
+ */
 export async function contracts(vaultName: string, slug: string) {
-  const { plan } = await files(vaultName, slug)
+  const { vault, plan } = await files(vaultName, slug)
   const cfg = await kbConfig()
   const projects = (Array.isArray(plan.fm.projects) ? plan.fm.projects : []) as string[]
   const repo = cfg.projects.find((p) => projects.includes(p.name))
+  const worktree = typeof plan.fm.worktree === 'string' ? plan.fm.worktree : undefined
   const frozen = await frozenEntries()
   const list = (Array.isArray(plan.fm.contracts) ? plan.fm.contracts : []) as string[]
   return Promise.all(
     list.map(async (c) => {
-      // Relativo ao repo do projeto; antes do merge, o contrato pode viver só no worktree do plano.
-      const candidates =
-        isAbsolute(c) || c.startsWith('~')
-          ? [expand(c)]
-          : [repo ? join(repo.path, c) : c, ...(typeof plan.fm.worktree === 'string' ? [join(expand(plan.fm.worktree), c)] : [])]
-      let path = candidates[0]
+      const r = resolveContract(vault.path, c, repo?.path, worktree)
       let content = ''
       let exists = false
-      for (const cand of candidates) {
+      if (r.exists) {
         try {
-          content = await readFile(cand, 'utf8')
+          content = await readFile(r.path, 'utf8')
           exists = true
-          path = cand
-          break
         } catch {
-          /* tenta o próximo */
+          /* sumiu entre o stat e a leitura */
         }
       }
-      const entry = frozen.find((f) => f.plan === slug && (f.file === c || f.file === path || basename(f.file) === basename(c)))
+      const resolved = { ...r, exists }
+      const entry = frozenEntryFor(frozen, slug, resolved)
       const sha = exists ? createHash('sha256').update(content).digest('hex') : ''
       const drifted = Boolean(entry?.sha && sha && !sha.startsWith(entry.sha))
-      return { file: c, path, exists, content, frozen: Boolean(entry), frozenAt: entry?.frozen_at, drifted }
+      return {
+        ...resolved,
+        content,
+        frozen: Boolean(entry),
+        frozenAt: entry?.frozen_at,
+        drifted,
+        warning: contractWarning(resolved),
+      }
     }),
   )
 }

@@ -64,6 +64,13 @@ export function useSessions(fn: () => SessionLike[]) {
   sessionSource = fn
 }
 
+/**
+ * `agent` do herdr que conta como agente de código. Pane de shell (servidor de
+ * teste, watch, REPL), vazio ou desconhecido fica de fora — não é "agente ocioso".
+ */
+const CODE_AGENTS = new Set(['claude', 'codex', 'opencode', 'gemini', 'amp', 'aider', 'cursor', 'goose', 'qwen', 'crush'])
+const isCodeAgent = (a: herdr.HerdrAgent) => CODE_AGENTS.has((a.agent ?? '').trim().toLowerCase())
+
 const CLI_WINDOW_MS = 7 * 24 * 3600_000
 const CACHE_MS = 5_000
 const GIT_TIMEOUT = 3_000
@@ -185,7 +192,7 @@ async function forPlan(p: PlanRow, src: Sources): Promise<Activity> {
   }
 
   const agents: Activity['agents'] = []
-  for (const a of src.agents) {
+  for (const a of src.agents.filter(isCodeAgent)) {
     const m = attribute(a.cwd)
     if (m) agents.push({ paneId: a.paneId, status: a.status, title: a.title, cwd: a.cwd, sessionId: a.sessionId, ...m })
   }

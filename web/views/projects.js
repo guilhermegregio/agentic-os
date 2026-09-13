@@ -65,9 +65,40 @@ function worktreesHtml(repoPath, rows, sessions) {
     <pre data-wtlog hidden></pre>`
 }
 
+// `-` escapado: o atributo pattern compila com o flag v, que recusa `-` solto na classe
+const SLUG = '^[a-z0-9][a-z0-9._\\-]{0,63}$'
+
+/** <dialog> de novo projeto — criado pela view, removido ao sair da rota. */
+function newProjectDialog() {
+  const dlg = document.createElement('dialog')
+  dlg.id = 'dlg-project'
+  dlg.innerHTML = `<form id="form-project" novalidate>
+    <h3>Novo projeto</h3>
+    <label>Nome<input name="name" required pattern="${SLUG}" maxlength="64" placeholder="meu-projeto" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="np-err"></label>
+    <small class="field-err" id="np-err" role="alert" data-nameerr hidden></small>
+    <small class="dest">destino: <span class="mono" data-dest>—</span></small>
+    <label>Descrição<textarea name="description" rows="3" placeholder="o que é este projeto — vai para o README e para a casa no vault"></textarea></label>
+    <div class="row2">
+      <label>Grupo<select name="group"><option value="">nenhum</option></select></label>
+      <label>Vault<select name="vault"></select></label>
+    </div>
+    <label class="check"><input type="checkbox" name="session" checked>abrir sessão de desenvolvimento</label>
+    <menu>
+      <button type="button" class="btn" data-cancel>cancelar</button>
+      <button type="submit" class="btn primary">criar</button>
+    </menu>
+  </form>`
+  document.body.append(dlg)
+  return dlg
+}
+
 export async function render(root, _params, ctx) {
   setCrumb('Projetos')
   let sessions = []
+  let meta = null
+  const dlg = newProjectDialog()
+  const pf = dlg.querySelector('form')
+  ctx.onLeave(() => dlg.remove())
   const load = async () => {
     const [projects, ov, sess] = await Promise.all([
       api('/api/projects'),
@@ -77,7 +108,7 @@ export async function render(root, _params, ctx) {
     if (!ctx.isCurrent()) return
     sessions = sess
     const orph = ov?.orphanWorktrees || []
-    root.innerHTML = `<div class="toolbar"><h1>Projetos</h1><span class="dim">${projects.length} registrados no kb</span></div>
+    root.innerHTML = `<div class="toolbar"><h1>Projetos</h1><span class="dim">${projects.length} registrados no kb</span><button class="btn sm primary" data-newproj>novo projeto</button></div>
       <div class="cards">
         ${projects.map(projectCard).join('')}
         <section class="card"><h2>Worktrees órfãos<span class="n">${orph.length || 0}</span></h2>
@@ -114,7 +145,84 @@ export async function render(root, _params, ctx) {
     }
   }
 
+  const nameErr = pf.querySelector('[data-nameerr]')
+  /** Erro inline sob o campo nome; '' limpa. Com erro, o foco volta ao nome. */
+  const setNameError = (msg) => {
+    nameErr.textContent = msg
+    nameErr.hidden = !msg
+    pf.name.toggleAttribute('aria-invalid', Boolean(msg))
+    if (msg) {
+      pf.name.focus()
+      pf.name.select()
+    }
+  }
+  const dest = () => {
+    const name = pf.name.value.trim()
+    pf.querySelector('[data-dest]').textContent = `${meta?.codeDir || '…'}/${name || '<nome>'}`
+  }
+  pf.name.addEventListener('input', () => {
+    dest()
+    setNameError('')
+  })
+
+  async function openNewProject() {
+    if (!meta) {
+      meta = await guard(() => api('/api/projects/meta'))
+      if (!meta) return
+      pf.group.innerHTML =
+        '<option value="">nenhum</option>' + (meta.groups || []).map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('')
+      pf.vault.innerHTML = (meta.vaults || [])
+        .map((v) => `<option value="${esc(v.name)}"${v.default ? ' selected' : ''}>${esc(v.name)}</option>`)
+        .join('')
+    }
+    pf.reset()
+    setNameError('')
+    const def = (meta.vaults || []).find((v) => v.default)
+    if (def) pf.vault.value = def.name
+    dest()
+    dlg.showModal()
+    pf.name.focus()
+  }
+
+  dlg.querySelector('[data-cancel]').addEventListener('click', () => dlg.close())
+  pf.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const name = pf.name.value.trim()
+    if (!name) return setNameError('informe o nome do projeto')
+    if (!new RegExp(SLUG).test(name)) return setNameError('nome inválido: minúsculas, dígitos e . _ - (começa com letra ou dígito, até 64)')
+    const description = pf.description.value.trim() || undefined
+    const body = { name, description, group: pf.group.value || undefined, vault: pf.vault.value || undefined }
+    const openSession = pf.session.checked
+    const btn = pf.querySelector('button[type=submit]')
+    btn.disabled = true
+    let r = null
+    try {
+      r = await api('/api/projects', { method: 'POST', body })
+    } catch (err) {
+      setNameError(err?.message || String(err))
+      return
+    } finally {
+      btn.disabled = false
+    }
+    dlg.close()
+    toast(r.path, 'ok')
+    if (!ctx.isCurrent()) return
+    await load()
+    const card = [...root.querySelectorAll('[data-proj]')].find((c) => c.dataset.proj === r.path)
+    if (card) {
+      if (r.registered === false) card.querySelector('h2').insertAdjacentHTML('beforeend', '<span class="pill warn">sem registro no kb</span>')
+      const pre = document.createElement('pre')
+      pre.textContent = (r.log || []).join('\n') || r.path
+      card.append(pre)
+      card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+    // a descrição é do README/vault: a sessão abre vazia e a pessoa escolhe modo, modelo e o que fazer
+    if (openSession) await openSessionDialog(r.path)
+  })
+
   root.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-newproj]')) return void openNewProject()
+
     const nw = e.target.closest('[data-new]')
     if (nw) return void openSessionDialog(nw.dataset.new)
 

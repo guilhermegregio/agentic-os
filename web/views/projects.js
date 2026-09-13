@@ -169,8 +169,10 @@ export async function render(root, _params, ctx) {
     if (!meta) {
       meta = await guard(() => api('/api/projects/meta'))
       if (!meta) return
+      // contrato: groups é [{ name, title? }]
       pf.group.innerHTML =
-        '<option value="">nenhum</option>' + (meta.groups || []).map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('')
+        '<option value="">nenhum</option>' +
+        (meta.groups || []).map((g) => `<option value="${esc(g.name)}">${esc(g.title || g.name)}</option>`).join('')
       pf.vault.innerHTML = (meta.vaults || [])
         .map((v) => `<option value="${esc(v.name)}"${v.default ? ' selected' : ''}>${esc(v.name)}</option>`)
         .join('')
@@ -184,40 +186,65 @@ export async function render(root, _params, ctx) {
     pf.name.focus()
   }
 
-  dlg.querySelector('[data-cancel]').addEventListener('click', () => dlg.close())
+  let busy = false
+  const cancelBtn = dlg.querySelector('[data-cancel]')
+  cancelBtn.addEventListener('click', () => dlg.close())
+  // o bootstrap leva segundos: com o request no ar o diálogo não fecha (Esc incluso)
+  dlg.addEventListener('cancel', (e) => {
+    if (busy) e.preventDefault()
+  })
+  const setBusy = (on) => {
+    busy = on
+    const btn = pf.querySelector('button[type=submit]')
+    btn.disabled = on
+    btn.textContent = on ? 'criando…' : 'criar'
+    cancelBtn.disabled = on
+  }
   pf.addEventListener('submit', async (e) => {
     e.preventDefault()
+    if (busy) return
     const name = pf.name.value.trim()
     if (!name) return setNameError('informe o nome do projeto')
     if (!new RegExp(SLUG).test(name)) return setNameError('nome inválido: minúsculas, dígitos e . _ - (começa com letra ou dígito, até 64)')
     const description = pf.description.value.trim() || undefined
     const body = { name, description, group: pf.group.value || undefined, vault: pf.vault.value || undefined }
     const openSession = pf.session.checked
-    const btn = pf.querySelector('button[type=submit]')
-    btn.disabled = true
+    setBusy(true)
     let r = null
     try {
       r = await api('/api/projects', { method: 'POST', body })
     } catch (err) {
+      setBusy(false)
       setNameError(err?.message || String(err))
       return
-    } finally {
-      btn.disabled = false
     }
+    setBusy(false)
     dlg.close()
     toast(r.path, 'ok')
     if (!ctx.isCurrent()) return
     await load()
-    const card = [...root.querySelectorAll('[data-proj]')].find((c) => c.dataset.proj === r.path)
+    let card = [...root.querySelectorAll('[data-proj]')].find((c) => c.dataset.proj === r.path)
+    if (!card) {
+      // lista ainda sem o projeto: o card novo entra na frente com o que a resposta traz
+      root.querySelector('.cards')?.insertAdjacentHTML('afterbegin', projectCard({ name: r.name, path: r.path, exists: true }))
+      card = root.querySelector('[data-proj]')
+    }
     if (card) {
       if (r.registered === false) card.querySelector('h2').insertAdjacentHTML('beforeend', '<span class="pill warn">sem registro no kb</span>')
       const pre = document.createElement('pre')
+      pre.dataset.bootlog = ''
       pre.textContent = (r.log || []).join('\n') || r.path
       card.append(pre)
       card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
+    if (!openSession) return
+    // o select do diálogo Nova sessão é cacheado no primeiro uso: garante o projeto novo nele
+    const sel = document.getElementById('ns-project')
+    if (sel instanceof HTMLSelectElement && sel.options.length && ![...sel.options].some((o) => o.value === r.path)) {
+      sel.insertBefore(new Option(r.name, r.path), sel.options[0])
+    }
     // a descrição é do README/vault: a sessão abre vazia e a pessoa escolhe modo, modelo e o que fazer
-    if (openSession) await openSessionDialog(r.path)
+    await openSessionDialog(r.path)
   })
 
   root.addEventListener('click', async (e) => {

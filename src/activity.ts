@@ -67,12 +67,12 @@ export function useSessions(fn: () => SessionLike[]) {
 /**
  * `agent` do herdr que conta como agente de código. Pane de shell (servidor de
  * teste, watch, REPL), vazio ou desconhecido fica de fora — não é "agente ocioso".
- * Status `unknown` também: um pane rodando o próprio Jarvis sobe um `claude` via
- * SDK e o herdr o marca `agent: claude`, mas sem estado de agente interativo.
+ * O pane onde o próprio Jarvis roda também: o SDK sobe um `claude` headless ali e
+ * o herdr o registra como `agent: claude`, indistinguível de um agente de verdade.
  */
 const CODE_AGENTS = new Set(['claude', 'codex', 'opencode', 'gemini', 'amp', 'aider', 'cursor', 'goose', 'qwen', 'crush'])
 const isCodeAgent = (a: herdr.HerdrAgent) =>
-  CODE_AGENTS.has((a.agent ?? '').trim().toLowerCase()) && Boolean(a.status) && a.status !== 'unknown'
+  CODE_AGENTS.has((a.agent ?? '').trim().toLowerCase()) && a.paneId !== process.env.HERDR_PANE_ID
 
 const CLI_WINDOW_MS = 7 * 24 * 3600_000
 const CACHE_MS = 5_000

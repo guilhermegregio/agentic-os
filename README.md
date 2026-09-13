@@ -69,6 +69,9 @@ de agentes ficam vazios (o chat, as sessões e o painel de custos funcionam sozi
   transcripts do CLI em `~/.claude/projects`, índice incremental; hoje/semana/mês por modelo.
 - `src/harness.ts` + `src/planops.ts` — leitura do harness `kb` (projetos, vaults,
   planos, tasks, contratos congelados) e as operações do console do devflow.
+- `src/projects.ts` — bootstrap de projeto novo: `~/code/<nome>` (`JARVIS_CODE_DIR`) com
+  `git init -b main`, README/CLAUDE.md com a descrição, `kb project add` + casa no vault +
+  `kb:link`, tudo num commit inicial; falha do `kb` vira log e `registered: false`.
 - `src/worktrees.ts` — worktrees no layout do `wtree` (`~/code/worktrees/<repo>-<branch>`).
 - `src/herdr.ts` — frota de agentes do herdr e abertura de pane para o handoff.
 - `src/server.ts` — Hono: REST + SSE. `web/` — UI vanilla (ES modules, sem build).
@@ -82,6 +85,8 @@ de agentes ficam vazios (o chat, as sessões e o painel de custos funcionam sozi
 | GET | `/api/usage/sessions` | sessões dos transcripts do CLI com custo |
 | GET/PATCH | `/api/settings` | `maxRunning`, modo/modelo/cwd padrão |
 | GET | `/api/projects` | projetos registrados no `kb` (git, CLAUDE.md, grafo) |
+| GET | `/api/projects/meta` | `codeDir`, grupos e vaults do `kb` para o diálogo "novo projeto" |
+| POST | `/api/projects` | `{name, description?, group?, vault?}` → cria o projeto; `{name, path, vaultHome?, registered, log}` |
 | GET/POST/DELETE | `/api/projects/worktrees` | listar / criar / remover worktrees |
 | GET | `/api/agents` | agentes do herdr; `POST /api/agents/:pane/focus` |
 | GET | `/api/plans` · `/api/plans/:vault/:slug` | planos do devflow, markdown, tasks, contratos |

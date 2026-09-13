@@ -490,7 +490,7 @@ const ROUTES = [
   { re: /^\/s\/([^/]+)$/, mod: './views/sessions.js', nav: 'sessions', crumb: 'Sessão', detail: true, keys: ['id'], parent: '#/sessions' },
   { re: /^\/projects\/?$/, mod: './views/projects.js', nav: 'projects', crumb: 'Projetos' },
   { re: /^\/plans\/?$/, mod: './views/plans.js', nav: 'plans', crumb: 'Planos' },
-  { re: /^\/plans\/([^/]+)\/([^/]+)$/, mod: './views/plans.js', nav: 'plans', crumb: 'Plano', detail: true, keys: ['vault', 'slug'], parent: '#/plans' },
+  { re: /^\/plans\/([^/?]+)\/([^/?]+)(?:\?([^#]*))?$/, mod: './views/plans.js', nav: 'plans', crumb: 'Plano', detail: true, keys: ['vault', 'slug', 'query'], parent: '#/plans' },
 ]
 
 let leaving = []

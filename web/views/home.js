@@ -2,6 +2,7 @@
 // quebra por campo ausente (tudo que falta vira "—").
 import { api, esc, fmtUsd, shortPath, resetIn, pct, toast, guard, setCrumb, refreshLive } from '../app.js'
 import { sparkline, hbars, meter } from '../charts.js'
+import { activityPill, stateOrder } from './plan-activity.js'
 
 const card = (title, n, body, cls = '') =>
   `<section class="card ${cls}"><h2>${esc(title)}${n !== undefined && n !== null ? `<span class="n">${esc(n)}</span>` : ''}</h2>${body}</section>`
@@ -106,6 +107,24 @@ function wPerms(ov) {
         .join('')}</ul>`
     : empty('nada aguardando você')
   return card('Permissões pendentes', n || null, body)
+}
+
+// 5b) Planos em movimento — atividade inferida por plano (herdr, sessões, CLI, git)
+function wMoving(ov) {
+  const plans = (ov.plans || []).filter((p) => p.activity && p.activity.state !== 'done')
+  plans.sort((a, b) => stateOrder(a.activity) - stateOrder(b.activity) || (b.activity.since || 0) - (a.activity.since || 0))
+  const hot = plans.filter((p) => stateOrder(p.activity) <= 2).length
+  const body = plans.length
+    ? `<ul class="list">${plans
+        .map((p) => {
+          const quiet = stateOrder(p.activity) >= 3
+          return `<li class="link" data-go="#/plans/${esc(p.vault)}/${esc(p.slug)}"${quiet ? ' style="opacity:.7"' : ''}>
+            <span class="t">${esc(p.title || p.slug)}<small>${esc(p.activity.reason || '—')}</small></span>
+            ${activityPill(p.activity)}</li>`
+        })
+        .join('')}</ul>`
+    : empty('nenhum plano ativo')
+  return card('Planos em movimento', hot || null, body)
 }
 
 // 6) Frota herdr ------------------------------------------------------------
@@ -227,6 +246,7 @@ export async function render(root, _params, ctx) {
       ${wByModel(usage)}
       ${wLive(ov)}
       ${wPerms(ov)}
+      ${wMoving(ov)}
       ${wFleet(ov)}
       ${wGates(ov)}
       ${wRisk(ov)}

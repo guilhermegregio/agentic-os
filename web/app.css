@@ -182,3 +182,76 @@ label.check input { min-height:0; width:18px; height:18px; margin:0; accent-colo
 dialog input:user-invalid { border-color:var(--err) }
 .field-err { color:var(--err); font-size:12.5px; margin-top:-6px; overflow-wrap:anywhere }
 dialog input[aria-invalid] { border-color:var(--err) }
+
+/* ---------- markdown rico: blocos de código, highlight, mermaid ---------- */
+.codeblock { margin:6px 0; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--bg) }
+.codeblock > pre { margin:0; border:0; border-radius:0 }
+.codebar { display:flex; align-items:center; gap:6px; padding:2px 4px 2px 10px; background:var(--panel2); border-bottom:1px solid var(--line); font-size:11.5px; color:var(--dim); font-family:ui-monospace, "JetBrains Mono", Menlo, monospace; min-height:30px }
+.codebar .lang { text-transform:lowercase; letter-spacing:.04em } .codebar .spacer { flex:1 }
+.codebar .pill { font-size:11px; padding:1px 7px }
+.cb { min-height:28px; padding:0 8px; font-size:12px; font-family:system-ui, sans-serif; background:transparent; border:1px solid transparent; color:var(--acc); cursor:pointer; border-radius:6px }
+.cb:hover { background:var(--panel) } .cb[aria-pressed="true"] { border-color:var(--acc) }
+@media (max-width:899px) { .cb { min-height:38px; padding:0 12px } }
+.mermaid-out { margin:0; padding:10px; overflow-x:auto; background:var(--panel); -webkit-overflow-scrolling:touch }
+.mermaid-out svg { max-width:100%; height:auto; display:block; margin:0 auto }
+.mermaid-out.dag svg g.node { cursor:pointer } .mermaid-out.dag svg g.node:hover { filter:brightness(1.15) }
+.mm-err { font-size:12px; padding:6px 10px; border-top:1px dashed var(--line); font-family:ui-monospace, monospace; overflow-wrap:anywhere }
+.hljs { color:var(--fg); background:transparent }
+.hljs-comment, .hljs-quote { color:var(--mute); font-style:italic }
+.hljs-keyword, .hljs-selector-tag, .hljs-section, .hljs-name, .hljs-doctag { color:var(--acc); font-weight:600 }
+.hljs-string, .hljs-addition, .hljs-regexp { color:var(--ok) }
+.hljs-number, .hljs-literal, .hljs-deletion { color:var(--c2) }
+.hljs-title, .hljs-title.function_, .hljs-title.class_ { color:var(--c1) }
+.hljs-attr, .hljs-attribute, .hljs-property { color:var(--c3) }
+.hljs-built_in, .hljs-type, .hljs-symbol, .hljs-variable, .hljs-template-variable, .hljs-meta { color:var(--warn) }
+.hljs-punctuation, .hljs-operator { color:var(--dim) }
+.hljs-emphasis { font-style:italic } .hljs-strong { font-weight:700 }
+
+/* ---------- contratos: uma Funcionalidade por details ---------- */
+details.feat { border:1px solid var(--line); border-radius:8px; padding:0 10px; background:var(--bg) }
+details.feat + details.feat { margin-top:6px }
+details.feat > summary { cursor:pointer; min-height:var(--tap); display:flex; align-items:center; gap:8px; list-style:none; font-weight:600; font-size:14px }
+details.feat > summary::-webkit-details-marker { display:none }
+details.feat > summary::before { content:'▸'; color:var(--dim); font-size:12px; transition:transform .15s; flex:none }
+details.feat[open] > summary::before { transform:rotate(90deg) }
+details.feat > summary .t { flex:1; min-width:0; overflow-wrap:anywhere }
+details.feat > summary .pill { flex:none }
+details.feat > .md { padding:0 0 8px }
+details.feat .md > h2:first-child { display:none }
+
+/* ---------- tasks: linha expansível + chips ---------- */
+tr.task { cursor:pointer } tr.task:hover td, tr.task.open td { background:var(--panel2) }
+tr.task td:first-child { white-space:nowrap }
+tr.task-detail > td { padding:12px 12px 16px; background:var(--bg) }
+tr.task-detail .md { max-width:none; font-size:14px }
+.chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px }
+.chip { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; padding:3px 4px 3px 9px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--fg); max-width:100%; min-height:30px }
+.chip b { color:var(--dim); font-weight:500 } .chip .mono { overflow-wrap:anywhere }
+.chip .cb { min-height:22px; padding:0 6px; font-size:11.5px }
+.chip.wide { flex-basis:100%; align-items:flex-start; flex-wrap:wrap }
+.chip.wide .mono { white-space:pre-wrap }
+@media (max-width:899px) { .chip .cb { min-height:34px } }
+.tasks-dag { margin-bottom:12px }
+.tasks-dag .legend { margin-top:6px }
+
+/* ---------- atividade ---------- */
+.pill .dot { width:7px; height:7px }
+.pill.dim { color:var(--mute); border-color:var(--line) }
+.act-hero { display:flex; flex-direction:column; gap:6px; margin-bottom:12px }
+.act-hero .state { display:flex; align-items:center; gap:10px; font-size:20px; font-weight:700; flex-wrap:wrap }
+.act-hero .state .dot { width:12px; height:12px }
+.act-hero .why { color:var(--dim); font-size:13.5px } .act-hero .note { color:var(--mute); font-size:12px }
+.act-grid { display:grid; grid-template-columns:1fr; gap:var(--gap) }
+@media (min-width:1100px) { .act-grid { grid-template-columns:repeat(2, minmax(0,1fr)) } }
+.act-grid .card.wide { grid-column:1 / -1 }
+.list li .pill { flex:none }
+.list li .acts { display:flex; gap:6px; flex:none }
+.plan-act { display:inline-flex; align-items:center; gap:6px }
+.toolbar .toggle[aria-pressed="true"] { border-color:var(--acc); color:var(--acc) }
+/* mobile: diagrama rola na horizontal em vez de encolher; tabela de tasks cabe na tela
+   (deps e escopo já aparecem nos chips da linha expandida) */
+@media (max-width:899px) {
+  .tasks-table th:nth-child(4), .tasks-table td:nth-child(4), .tasks-table th:nth-child(6), .tasks-table td:nth-child(6) { display:none }
+  tr.task-detail > td { padding:10px 6px 14px }
+  .tasks-table td:nth-child(2) { width:99% }
+}

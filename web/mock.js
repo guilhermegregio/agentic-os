@@ -138,7 +138,7 @@ dashboard de consumo e um console para o [[30-plans/devflow|ciclo do devflow]].
 ### Decisões
 
 - UI vanilla (ES modules, sem build) — ver [[adr-sem-build]]
-- Contrato congelado em \`behaviors.feature\`
+- Contrato congelado em \`behaviors/jarvis.feature.md\`
 - Protótipo navegável com \`?mock=1\` antes de qualquer código de produção
 
 ### Gates
@@ -149,15 +149,157 @@ dashboard de consumo e um console para o [[30-plans/devflow|ciclo do devflow]].
 | TB | behaviors | cenários Gherkin congelados |
 
 > Contrato congelado não se edita para o código passar.
+
+## DAG / paralelismo
+
+\`\`\`mermaid
+graph LR
+  TP[TP protótipo ⛔] --> TB[TB contrato ⛔🧊]
+  TB --> T01[T01 sessões persistentes]
+  T01 --> T07[T07 shell mobile-first]
+  T07 --> T08[T08 sessões e chat]
+  T07 --> T09[T09 console do devflow]
+\`\`\`
+
+Onda 1: T01. Onda 2: T07. Onda 3: T08 ∥ T09 — escopos disjuntos (\`sessions.js\` vs \`plans.js\`).
+
+## Fluxo de uma sessão
+
+\`\`\`mermaid
+sequenceDiagram
+  participant B as browser
+  participant J as jarvis (hono)
+  participant S as agent sdk
+  B->>J: POST /api/sessions {cwd, prompt}
+  J->>S: query() streaming-input
+  S-->>J: eventos (seq)
+  J-->>B: SSE /events?since=seq
+  B->>J: POST /permissions/:pid {allow}
+  J->>S: canUseTool → allow
+\`\`\`
+
+## Spec
+
+### API
+
+\`\`\`
+GET  /api/sessions/:id/events?since=   SSE: replay do disco + vivo
+POST /api/sessions/:id/messages        { text }  — sessão gravada revive sozinha
+\`\`\`
+
+### Persistência (\`src/store.ts\`)
+
+\`\`\`ts
+export interface SessionMeta {
+  id: string
+  sdkSessionId?: string
+  cwd: string
+  state: 'starting' | 'running' | 'idle' | 'closed'
+  updatedAt: number
+}
+export async function append(id: string, e: SessionEvent) {
+  await appendFile(join(DIR, id, 'events.jsonl'), JSON.stringify(e) + '\\n')
+}
+\`\`\`
+
+### Rodar
+
+\`\`\`bash
+pnpm install
+cp .env.example .env
+JARVIS_TOKEN=$(openssl rand -hex 16) pnpm dev   # http://localhost:4747
+\`\`\`
+
+Exemplo de evento gravado:
+
+\`\`\`json
+{ "seq": 41, "kind": "permission_request", "toolName": "Write", "ts": 1757700000000 }
+\`\`\`
 `
 
 const TASKS = [
-  { id: 'TP', title: 'Gate humano: protótipo navegável', status: 'todo', dependsOn: [], repo: 'jarvis', branch: 'jarvis-agenticos', gates: [], gate: 'human', stage: 'prototype', scope: ['web/'], ready: true },
-  { id: 'TB', title: 'Gate humano: behaviors congelados', status: 'todo', dependsOn: ['TP'], repo: 'jarvis', branch: 'jarvis-agenticos', gates: [], gate: 'human', stage: 'behaviors', scope: ['behaviors.feature'], ready: false },
-  { id: 'T01', title: 'Sessões persistentes e retomáveis', status: 'done', dependsOn: ['TB'], repo: 'jarvis', branch: 'jarvis-agenticos', gates: ['pnpm typecheck'], scope: ['src/agent.ts src/store.ts'], ready: false },
-  { id: 'T07', title: 'Shell mobile-first + dashboard', status: 'in-progress', dependsOn: ['T01'], repo: 'jarvis', branch: 'jarvis-agenticos', gates: ['pnpm typecheck'], scope: ['web/'], ready: true },
-  { id: 'T08', title: 'Sessões e chat', status: 'todo', dependsOn: ['T07'], repo: 'jarvis', branch: 'jarvis-agenticos', gates: [], scope: ['web/views/sessions.js'], ready: false },
+  { id: 'TP', title: 'Gate humano: protótipo navegável', status: 'todo', dependsOn: [], repo: 'jarvis', branch: 'TP-jarvis-agenticos-proto', gates: ['pnpm typecheck'], gate: 'human', stage: 'prototype', scope: ['web/views/home.js', 'web/views/plans.js', 'web/mock.js', 'web/app.css'], ready: true },
+  { id: 'TB', title: 'Gate humano: behaviors congelados', status: 'todo', dependsOn: ['TP'], repo: 'pessoal', branch: 'TB-jarvis-agenticos-contrato', gates: [], gate: 'human', stage: 'behaviors', scope: ['10-projects/jarvis/behaviors/jarvis.feature.md'], ready: false },
+  { id: 'T01', title: 'Sessões persistentes e retomáveis', status: 'done', dependsOn: ['TB'], repo: 'jarvis', branch: 'T01-jarvis-agenticos-sessoes', gates: ['pnpm typecheck'], scope: ['src/agent.ts', 'src/store.ts', 'src/server.ts'], ready: false },
+  { id: 'T07', title: 'Shell mobile-first + dashboard', status: 'in-progress', dependsOn: ['T01'], repo: 'jarvis', branch: 'T07-jarvis-agenticos-shell', gates: ['pnpm typecheck', 'node --check web/app.js'], scope: ['web/index.html', 'web/app.js', 'web/app.css', 'web/views/home.js', 'web/charts.js'], ready: true },
+  { id: 'T08', title: 'Sessões e chat', status: 'todo', dependsOn: ['T07'], repo: 'jarvis', branch: 'T08-jarvis-agenticos-chat', gates: ['pnpm typecheck'], scope: ['web/views/sessions.js'], ready: false },
+  { id: 'T09', title: 'Console do devflow (planos, gates, freeze)', status: 'todo', dependsOn: ['T07'], repo: 'jarvis', branch: 'T09-jarvis-agenticos-planos', gates: ['pnpm typecheck'], scope: ['web/views/plans.js', 'src/planops.ts'], ready: false },
 ]
+
+const TASK_BODY = {
+  TP: `## Contexto (mínimo)
+
+O protótipo do devflow é o **modo mock** do próprio app: \`pnpm dev:mock\` sobe em
+\`http://localhost:4748\` só com estáticos e \`web/mock.js\` responde \`/api/*\`.
+
+## Passos
+
+1. Shell mobile-first (topbar + tabbar) e a Home com os widgets na ordem de importância.
+2. Iterar por screenshot (400 px e 1280 px) até o usuário aprovar.
+
+## Done-criteria
+
+- [ ] Navegável em modo mock sem erro no console.
+- [ ] ⛔ **GATE**: usuário aprovou o layout.
+`,
+  TB: `## Passos
+
+1. \`kb new --vault pessoal --type contract --project jarvis --title "jarvis" --plan jarvis-agenticos\`
+2. Declarar em \`contracts:\` no \`_plan.md\`.
+3. ⛔ **GATE**: usuário lê e aprova. Depois \`kb dev freeze jarvis-agenticos\`.
+`,
+  T01: `## Contexto (mínimo)
+
+\`AgentSession\` embrulha um \`query()\` em streaming-input; cada evento ganha \`seq\`
+e vai para \`sessions/<id>/events.jsonl\`. Reviver = \`resume\` com o id do CLI.
+
+## Passos
+
+1. \`src/store.ts\`: \`append(id, event)\` e \`readSince(id, seq)\`.
+2. \`src/agent.ts\`: buffer em memória + flush por evento; \`revive()\`.
+3. \`src/server.ts\`: \`GET /events?since=\` faz replay do disco antes do vivo.
+
+\`\`\`ts
+for await (const e of readSince(id, since)) send(e)   // replay
+session.on('event', send)                              // vivo
+\`\`\`
+
+## Done-criteria
+
+- [x] Reload não perde histórico. Dois devices recebem o mesmo evento.
+- [x] \`pnpm typecheck\` verde. Diff ⊆ \`scope\`.
+`,
+  T07: `## Contexto (mínimo)
+
+Shell em grid (\`topbar / view / tabbar\`), sidebar a partir de 900 px. Widgets da Home
+em ordem: janelas da subscription, custo, sessões vivas, permissões, frota, gates.
+
+## Passos
+
+1. \`web/app.css\`: tokens + shell responsivo.
+2. \`web/views/home.js\`: um widget por função, nenhum quebra com campo ausente.
+3. \`web/charts.js\`: sparkline e barras em SVG puro.
+
+## Comandos / gates
+
+- \`pnpm typecheck\` · \`node --check web/app.js\`
+
+## Done-criteria
+
+- [x] Home em 400 px sem scroll horizontal.
+- [ ] Sparkline com 30 dias.
+`,
+  T08: `## Passos
+
+1. Lista de sessões (vivas ∪ gravadas) com filtro.
+2. Chat com SSE, tool calls colapsáveis e cards de permissão.
+`,
+  T09: `## Passos
+
+1. Lista de planos com progresso e gates.
+2. Detalhe com abas; freeze/unfreeze/check via \`kb dev\`.
+`,
+}
 
 const PLANS = [
   {
@@ -165,12 +307,13 @@ const PLANS = [
     title: 'Jarvis agenticOS — UI mobile-first, dashboard, sessões persistentes e console do devflow',
     status: 'ready-for-review', projects: ['jarvis'], groups: ['agent-os'],
     stack: ['node', 'typescript', 'hono', 'claude-agent-sdk', 'vanilla-web'],
-    progress: { done: 1, total: 12, source: 'tasks' }, tasks: TASKS, ready: ['TP'], openGates: 2,
-    frozen: [], contracts: ['behaviors.feature'], prototypeUrl: 'http://localhost:4747/?mock=1',
+    progress: { done: 1, total: 6, source: 'tasks' }, tasks: TASKS, ready: ['TP'], openGates: 2,
+    frozen: [], contracts: ['jarvis/behaviors/jarvis.feature.md'], prototypeUrl: 'http://localhost:4747/?mock=1',
     worktree: '/home/user/code/worktrees/jarvis-jarvis-agenticos', approvedBy: null,
     gates: [{ id: 'TB', stage: 'behaviors', status: 'todo' }, { id: 'TP', stage: 'prototype', status: 'todo' }],
     lastExecution: { day: ymd(now), ts: now - 300000 },
     path: '/home/user/code/vault-pessoal/30-plans/jarvis-agenticos',
+    activity: { state: 'working', since: now - 12000, reason: 'agente trabalhando em T07 (w1:p3)' },
   },
   {
     slug: 'pdfs-para-markdown', vault: 'team', visibility: 'team',
@@ -182,6 +325,7 @@ const PLANS = [
     approvedBy: 'user',
     gates: [{ id: 'T01', stage: 'spike', status: 'done' }, { id: 'TB', stage: 'behaviors', status: 'done' }],
     lastExecution: { day: ymd(now - DAY), ts: now - DAY }, path: '/home/user/code/vault-team/30-plans/pdfs-para-markdown',
+    activity: { state: 'waiting-human', since: now - 40 * 60000, reason: 'T03 em review' },
   },
   {
     slug: 'billing-metadata', vault: 'team', visibility: 'team',
@@ -192,8 +336,72 @@ const PLANS = [
     prototypeUrl: 'http://localhost:4100', worktree: '/home/user/code/worktrees/app-c-T05-mig-billing-metadata',
     approvedBy: 'user', gates: [{ id: 'TB', stage: 'behaviors', status: 'done' }],
     lastExecution: null, path: '/home/user/code/vault-team/30-plans/billing-metadata',
+    activity: { state: 'stale', since: now - 2 * DAY, reason: 'parado há 2 d — última atividade no CLI' },
   },
 ]
+
+// Só com ?archived=1 (30-plans/_archive/**): histórico, não ruído na lista.
+const ARCHIVED = [
+  {
+    slug: 'onda1-dx', vault: 'pessoal', visibility: 'private', title: 'Onda 1 — DX do harness (kb status, kb map, guard)',
+    status: 'done', projects: ['kb-cli'], groups: ['agent-os'], stack: ['node'],
+    progress: { done: 5, total: 5, source: 'tasks' }, tasks: [], ready: [], openGates: 0, frozen: [], contracts: [],
+    prototypeUrl: null, worktree: null, approvedBy: 'user', gates: [],
+    lastExecution: { day: ymd(now - 9 * DAY), ts: now - 9 * DAY }, path: '/home/user/code/vault-pessoal/30-plans/_archive/onda1-dx',
+    activity: { state: 'done', since: now - 9 * DAY, reason: 'concluído' },
+  },
+]
+
+// Atividade inferida por plano — shape de GET /api/plans/:vault/:slug/activity.
+const WT = '/home/user/code/worktrees'
+const ACTIVITY = {
+  'pessoal/jarvis-agenticos': {
+    state: 'working', since: now - 12000, reason: 'agente trabalhando em T07 (w1:p3)', herdr: true,
+    waiting: ['aguardando aprovação do TP', 'permissão pendente em "Front-end do Jarvis (T07–T09)"'],
+    agents: [
+      { paneId: 'w1:p3', status: 'working', title: 'T07 shell mobile-first + dashboard', cwd: `${WT}/jarvis-T07-jarvis-agenticos-shell`, sessionId: '00000000-0000-4000-8000-000000000007', task: 'T07' },
+      { paneId: 'w1:p1', status: 'idle', title: 'Claude Code', cwd: '/home/user/code/jarvis', sessionId: '00000000-0000-4000-8000-000000000004', task: null },
+    ],
+    sessions: [{ id: 'sess-jarvis-web', state: 'running', title: 'Front-end do Jarvis (T07–T09)', cwd: `${WT}/jarvis-jarvis-agenticos`, live: true, pendingPermissions: 1, task: null }],
+    cli: [
+      { sessionId: '00000000-0000-4000-8000-000000000007', cwd: `${WT}/jarvis-T07-jarvis-agenticos-shell`, lastTs: now - 12000, title: 'T07 shell mobile-first + dashboard', task: 'T07' },
+      { sessionId: '00000000-0000-4000-8000-000000000004', cwd: '/home/user/code/jarvis', lastTs: now - 3600000, title: 'interface mobile first com dashboard', task: null },
+    ],
+    tasks: [
+      { id: 'TP', status: 'todo', branch: 'TP-jarvis-agenticos-proto', worktree: `${WT}/jarvis-TP-jarvis-agenticos-proto`, worktreeExists: false, branchExists: true, merged: true, lastCommitTs: now - 3 * DAY, agents: 0, sessions: 0 },
+      { id: 'TB', status: 'todo', branch: 'TB-jarvis-agenticos-contrato', worktree: `${WT}/pessoal-TB-jarvis-agenticos-contrato`, worktreeExists: false, branchExists: false, merged: false, lastCommitTs: null, agents: 0, sessions: 0 },
+      { id: 'T01', status: 'done', branch: 'T01-jarvis-agenticos-sessoes', worktree: `${WT}/jarvis-T01-jarvis-agenticos-sessoes`, worktreeExists: false, branchExists: false, merged: true, lastCommitTs: now - 2 * DAY, agents: 0, sessions: 0 },
+      { id: 'T07', status: 'in-progress', branch: 'T07-jarvis-agenticos-shell', worktree: `${WT}/jarvis-T07-jarvis-agenticos-shell`, worktreeExists: true, branchExists: true, merged: false, lastCommitTs: now - 25 * 60000, agents: 1, sessions: 0 },
+      { id: 'T08', status: 'todo', branch: 'T08-jarvis-agenticos-chat', worktree: `${WT}/jarvis-T08-jarvis-agenticos-chat`, worktreeExists: false, branchExists: false, merged: false, lastCommitTs: null, agents: 0, sessions: 0 },
+      { id: 'T09', status: 'todo', branch: 'T09-jarvis-agenticos-planos', worktree: `${WT}/jarvis-T09-jarvis-agenticos-planos`, worktreeExists: false, branchExists: false, merged: false, lastCommitTs: null, agents: 0, sessions: 0 },
+    ],
+    lastExecution: { day: ymd(now), ts: now - 300000 },
+  },
+  'team/pdfs-para-markdown': {
+    state: 'waiting-human', since: now - 40 * 60000, reason: 'T03 em review', herdr: true,
+    waiting: ['T03 em review'],
+    agents: [{ paneId: 'w2N:p1', status: 'idle', title: 'T03 extrair markdown dos PDFs', cwd: `${WT}/app-b-T03-extract-markdown`, sessionId: '00000000-0000-4000-8000-000000000002', task: 'T03' }],
+    sessions: [{ id: 'sess-pdfs', state: 'queued', title: 'Extrair PDFs para markdown', cwd: `${WT}/app-b-T03-extract-markdown`, live: true, pendingPermissions: 0, task: 'T03' }],
+    cli: [{ sessionId: '00000000-0000-4000-8000-000000000002', cwd: `${WT}/app-b-T03-extract-markdown`, lastTs: now - 40 * 60000, title: 'Extrair PDFs para markdown', task: 'T03' }],
+    tasks: [
+      { id: 'T01', status: 'done', branch: 'T01-pdfs-spike', worktree: `${WT}/app-b-T01-pdfs-spike`, worktreeExists: false, branchExists: false, merged: true, lastCommitTs: now - 6 * DAY, agents: 0, sessions: 0 },
+      { id: 'T02', status: 'done', branch: 'T02-pdfs-pipeline', worktree: `${WT}/app-b-T02-pdfs-pipeline`, worktreeExists: false, branchExists: false, merged: true, lastCommitTs: now - 3 * DAY, agents: 0, sessions: 0 },
+      { id: 'T03', status: 'review', branch: 'T03-extract-markdown', worktree: `${WT}/app-b-T03-extract-markdown`, worktreeExists: true, branchExists: true, merged: false, lastCommitTs: now - 45 * 60000, agents: 1, sessions: 1 },
+      { id: 'T04', status: 'todo', branch: 'T04-pdfs-index', worktree: `${WT}/app-b-T04-pdfs-index`, worktreeExists: false, branchExists: false, merged: false, lastCommitTs: null, agents: 0, sessions: 0 },
+    ],
+    lastExecution: { day: ymd(now - DAY), ts: now - DAY },
+  },
+  'team/billing-metadata': {
+    state: 'stale', since: now - 2 * DAY, reason: 'parado há 2 d — última atividade no CLI', herdr: true,
+    waiting: [], agents: [], sessions: [],
+    cli: [{ sessionId: '00000000-0000-4000-8000-000000000003', cwd: '/home/user/code/app-c/apps/brand-a', lastTs: now - 2 * DAY, title: 'Tokens do brand-a', task: null }],
+    tasks: [
+      { id: 'T05', status: 'done', branch: 'T05-mig-billing-metadata', worktree: `${WT}/app-c-T05-mig-billing-metadata`, worktreeExists: true, branchExists: true, merged: true, lastCommitTs: now - 2 * DAY, agents: 0, sessions: 0 },
+      { id: 'T06', status: 'todo', branch: 'T06-billing-ui', worktree: `${WT}/app-c-T06-billing-ui`, worktreeExists: false, branchExists: false, merged: false, lastCommitTs: null, agents: 0, sessions: 0 },
+    ],
+    lastExecution: null,
+  },
+}
 
 const OVERVIEW = {
   generatedAt: now,
@@ -221,7 +429,7 @@ const OVERVIEW = {
     { terminalId: 'term_a2', agent: 'claude', status: 'blocked', title: 'Migração billing', cwd: '/home/user/code/app-c', workspaceId: 'w3A', paneId: 'w3A:p2', focused: false },
     { terminalId: 'term_a3', agent: 'claude', status: 'idle', title: 'Claude Code', cwd: '/home/user/code/jarvis', workspaceId: 'w1', paneId: 'w1:p3', focused: true },
   ],
-  plans: PLANS.map((p) => ({ slug: p.slug, vault: p.vault, title: p.title, status: p.status, progress: p.progress, ready: p.ready, gates: p.gates, openGates: p.openGates, frozen: p.frozen.length, prototypeUrl: p.prototypeUrl, projects: p.projects })),
+  plans: PLANS.map((p) => ({ slug: p.slug, vault: p.vault, title: p.title, status: p.status, progress: p.progress, ready: p.ready, gates: p.gates, openGates: p.openGates, frozen: p.frozen.length, prototypeUrl: p.prototypeUrl, projects: p.projects, activity: p.activity })),
   repoRisk: [
     { name: 'jarvis', path: '/home/user/code/jarvis', branch: 'jarvis-agenticos', dirty: 5, ahead: 1 },
     { name: 'app-c', path: '/home/user/code/app-c', branch: 'main', dirty: 2, ahead: 0 },
@@ -283,8 +491,58 @@ const STORED = [
   { sessionId: '00000000-0000-4000-8000-000000000005', summary: 'kb dev: congelar contrato do plano', lastModified: now - 3 * DAY, cwd: '/home/user/code/kb-cli', gitBranch: 'main', firstPrompt: 'implementa o freeze do contrato com registro de motivo', imported: true },
 ]
 
-const CONTRACT = `# language: pt
+const CONTRACT = `---
+id: pessoal-contract-jarvis
+type: contract
+title: "Contrato — jarvis"
+status: active
+plan: jarvis-agenticos
+projects: [jarvis]
+visibility: private
+created: ${ymd(now - 3 * DAY)}
+updated: ${ymd(now)}
+---
+
+# Contrato — jarvis
+
+> Escrito ANTES do código. Depois de \`kb dev freeze\`, cenário quebrando = código errado.
+> Não é executado — contrato para humano e agente.
+
+## Funcionalidade: Sessões persistentes e multi-device
+
+\`\`\`gherkin
+# language: pt
+Funcionalidade: Sessões persistentes e multi-device
+  O estado de uma sessão vive no servidor (events.jsonl + meta.json), nunca no browser.
+
+  Cenário: Recarregar a página não perde a sessão
+    Dado uma sessão viva com 3 turnos concluídos
+    Quando o usuário recarrega a página e abre a mesma sessão
+    Então o histórico completo (mensagens, tool calls, resultados) reaparece na mesma ordem
+    E o estado mostrado é o estado atual do servidor
+
+  Cenário: A mesma sessão aberta em dois devices
+    Dado a sessão aberta no notebook e no celular
+    Quando o agente emite um evento (texto, tool call, permissão)
+    Então os dois devices recebem o evento
+    E uma permissão decidida no celular some do notebook com a decisão registrada
+
+  @revive
+  Cenário: Sessão fechada revive ao receber mensagem
+    Dado uma sessão gravada em disco cujo processo não existe mais
+    Quando o usuário envia a mensagem "continua"
+    Então o servidor cria o processo de novo com \`resume\` no id do CLI
+    Mas a sequência de eventos continua do último seq gravado, sem duplicar histórico
+\`\`\`
+
+## Funcionalidade: Dashboard do Jarvis
+
+\`\`\`gherkin
+# language: pt
 Funcionalidade: Dashboard do Jarvis
+
+  Contexto:
+    Dado que o usuário está logado no CLI
 
   Cenário: janelas da subscription
     Dado que a conta tem subscription ativa
@@ -294,6 +552,30 @@ Funcionalidade: Dashboard do Jarvis
   Cenário: sem janelas (API key)
     Dado que a conta usa API key
     Então vejo "janelas indisponíveis (API key)"
+
+  Esquema do Cenário: severidade da janela
+    Dado uma janela em <percentual>%
+    Então a barra fica <cor>
+
+    Exemplos:
+      | percentual | cor      |
+      | 40         | normal   |
+      | 75         | amarela  |
+      | 92         | vermelha |
+\`\`\`
+
+## Funcionalidade: Console do devflow
+
+\`\`\`gherkin
+# language: pt
+Funcionalidade: Console do devflow
+
+  Cenário: aprovar o gate TB congela o contrato
+    Dado um plano com a task TB em todo
+    Quando o usuário clica em "aprovar contrato (TB) + congelar"
+    Então TB fica done
+    E \`kb dev freeze\` roda e o contrato aparece como 🧊 congelado
+\`\`\`
 `
 
 const PLAN_DETAIL = {
@@ -301,11 +583,54 @@ const PLAN_DETAIL = {
   prototypeUp: true,
   files: {
     plan: { name: '_plan.md', path: '/home/user/code/vault-pessoal/30-plans/jarvis-agenticos/_plan.md', markdown: PLAN_MD, fm: { status: 'ready-for-review', projects: ['jarvis'], created: ymd(now) } },
-    tasks: TASKS.map((t) => ({ name: `tasks/${t.id}.md`, path: `/vault/30-plans/jarvis-agenticos/tasks/${t.id}.md`, markdown: `## ${t.id} — ${t.title}\n\nEscopo: \`${t.scope.join(' ')}\`\n`, fm: { id: t.id, status: t.status } })),
-    execution: [{ name: `execution/${ymd(now)}.md`, markdown: `## ${ymd(now)}\n\n- T01 concluída (sessões persistentes)\n- Protótipo no ar em \`?mock=1\`\n` }],
+    tasks: TASKS.map((t) => ({
+      name: `tasks/${t.id}.md`,
+      path: `/home/user/code/vault-pessoal/30-plans/jarvis-agenticos/tasks/${t.id}.md`,
+      markdown: `---\nid: ${t.id}\nplan: jarvis-agenticos\ntitle: "${t.title}"\nstatus: ${t.status}\n---\n\n${TASK_BODY[t.id] || `## ${t.id} — ${t.title}\n`}`,
+      fm: { id: t.id, plan: 'jarvis-agenticos', title: t.title, status: t.status, repo: t.repo, branch: t.branch, depends_on: t.dependsOn, scope: t.scope, gates: t.gates },
+    })),
+    execution: [
+      {
+        name: `execution/${ymd(now)}.md`,
+        markdown: `# Execução — ${ymd(now)}\n\n## Onda 1 — T01 (pane w1:p2)\n- Sessões persistentes: \`events.jsonl\` + replay por \`seq\`. Smoke pelo agente:\n\n\`\`\`bash\nhttps GET :4747/api/sessions/abc/events since==0\n\`\`\`\n\n- Merge serial na main; \`wtree --rm\`.\n\n## Onda 2 — T07 (pane w1:p3)\n- Em andamento: shell + Home. Protótipo no ar em \`?mock=1\`.\n`,
+      },
+      { name: `execution/${ymd(now - DAY)}.md`, markdown: `# Execução — ${ymd(now - DAY)}\n\n## Gates\n- ⛔ TP aprovado pelo usuário (layout em 400 px e 1280 px).\n- ⛔🧊 TB aprovado e congelado (\`kb dev freeze\`, 9 cenários).\n` },
+    ],
   },
-  contracts: [{ file: 'behaviors.feature', path: '/home/user/code/worktrees/jarvis-jarvis-agenticos/behaviors.feature', exists: true, content: CONTRACT, frozen: false, frozenAt: null, drifted: false }],
+  contracts: [{ file: 'jarvis/behaviors/jarvis.feature.md', path: '/home/user/code/vault-pessoal/10-projects/jarvis/behaviors/jarvis.feature.md', exists: true, legacy: false, content: CONTRACT, frozen: false, frozenAt: null, drifted: false }],
 }
+
+const PDFS_PLAN_MD = `## Objetivo
+
+Converter os 71 PDFs do acervo em markdown navegável, com índice por tema.
+
+## Pipeline
+
+\`\`\`mermaid
+flowchart TD
+  A[PDFs] --> B{tem texto?}
+  B -- sim --> C[pdftotext]
+  B -- não --> D[OCR tesseract]
+  C --> E[markdown + frontmatter]
+  D --> E
+  E --> F[(vault/40-sources)]
+\`\`\`
+
+## Diagrama com erro de sintaxe (para ver a degradação)
+
+\`\`\`mermaid
+graph LR
+  A --> B
+  B -->> C
+  C --> [D
+\`\`\`
+
+## Comando
+
+\`\`\`bash
+kb source add ./pdfs/*.pdf --vault team --tag acervo
+\`\`\`
+`
 
 // --- estado mutável do mock ------------------------------------------------
 const state = {
@@ -325,10 +650,10 @@ function planDetail() {
   d.gates = d.gates.map((g) => (state.gates[g.id] ? { ...g, status: 'done' } : g))
   d.tasks = d.tasks.map((t) => (state.gates[t.id] ? { ...t, status: 'done' } : t))
   d.openGates = d.gates.filter((g) => g.status !== 'done').length
-  if (state.frozen['behaviors.feature']) {
+  if (state.frozen['jarvis/behaviors/jarvis.feature.md']) {
     d.contracts[0].frozen = true
     d.contracts[0].frozenAt = iso(Date.now())
-    d.frozen = [{ file: 'behaviors.feature', frozenAt: d.contracts[0].frozenAt }]
+    d.frozen = [{ file: 'jarvis/behaviors/jarvis.feature.md', frozenAt: d.contracts[0].frozenAt }]
   }
   return d
 }
@@ -396,15 +721,29 @@ export async function mockApi(path, opts = {}) {
   }
   if (route === '/api/agents') return clone(OVERVIEW.agents)
   if (/^\/api\/agents\/.+\/focus$/.test(route)) return { ok: true }
-  if (route === '/api/plans') return clone(PLANS)
+  if (route === '/api/plans') return clone(q.get('archived') === '1' ? [...PLANS, ...ARCHIVED] : PLANS)
   if (route === '/api/plans/pessoal/jarvis-agenticos') return planDetail()
   const pm = route.match(/^\/api\/plans\/([^/]+)\/([^/]+)(\/.*)?$/)
   if (pm) {
     const [, vault, slug, rest] = pm
+    const key = `${vault}/${slug}`
+    if (rest === '/activity') {
+      const a = ACTIVITY[key]
+      if (a) {
+        const d = clone(a)
+        // o gate aprovado no mock some da lista de pendências
+        d.waiting = d.waiting.filter((w) => !(w.includes('do TP') && state.gates.TP) && !(w.includes('do TB') && state.gates.TB))
+        return d
+      }
+      const p = [...PLANS, ...ARCHIVED].find((x) => x.vault === vault && x.slug === slug)
+      if (!p) throw Object.assign(new Error('plano não encontrado'), { status: 404 })
+      return { ...clone(p.activity || { state: 'quiet', since: p.lastExecution?.ts || null, reason: 'sem sinais' }), herdr: true, waiting: [], agents: [], sessions: [], cli: [], tasks: [], lastExecution: p.lastExecution }
+    }
     if (!rest) {
-      const p = PLANS.find((x) => x.vault === vault && x.slug === slug)
-      if (!p) throw new Error('plano não encontrado')
-      return { ...clone(p), prototypeUp: p.prototypeUrl ? false : null, files: { plan: { name: '_plan.md', path: p.path + '/_plan.md', markdown: `## ${p.title}\n\nPlano de exemplo do mock.\n`, fm: {} }, tasks: [], execution: [] }, contracts: [] }
+      const p = [...PLANS, ...ARCHIVED].find((x) => x.vault === vault && x.slug === slug)
+      if (!p) throw Object.assign(new Error('plano não encontrado'), { status: 404 })
+      const markdown = slug === 'pdfs-para-markdown' ? PDFS_PLAN_MD : `## ${p.title}\n\nPlano de exemplo do mock.\n`
+      return { ...clone(p), prototypeUp: p.prototypeUrl ? false : null, files: { plan: { name: '_plan.md', path: p.path + '/_plan.md', markdown, fm: {} }, tasks: [], execution: [] }, contracts: [] }
     }
     if (rest === '/status') {
       state.planStatus[`${vault}/${slug}`] = body.status
@@ -418,9 +757,9 @@ export async function mockApi(path, opts = {}) {
     const km = rest.match(/^\/kb\/(.+)$/)
     if (km) {
       const cmd = km[1]
-      if (cmd === 'freeze') state.frozen['behaviors.feature'] = true
-      if (cmd === 'unfreeze') delete state.frozen['behaviors.feature']
-      return { ok: true, code: 0, output: `$ kb dev ${cmd} ${slug}\n[mock] ${cmd} executado com sucesso\ncontratos: behaviors.feature\n` }
+      if (cmd === 'freeze') state.frozen['jarvis/behaviors/jarvis.feature.md'] = true
+      if (cmd === 'unfreeze') delete state.frozen['jarvis/behaviors/jarvis.feature.md']
+      return { ok: true, code: 0, output: `$ kb dev ${cmd} ${slug}\n[mock] ${cmd} executado com sucesso\ncontratos: jarvis/behaviors/jarvis.feature.md\n` }
     }
   }
   if (route === '/api/sessions') {

@@ -1,6 +1,11 @@
 // views/plans.js — console do devflow: lista de planos e o detalhe com gates,
-// contratos congelados e execução.
+// plano, tasks (DAG + detalhe), contratos (gherkin), execução e a atividade
+// inferida. Renderização rica via md-enhance (highlight, copiar, mermaid).
 import { api, esc, md, shortPath, relTime, toast, guard, setCrumb } from '../app.js'
+import { enhance, copy } from '../md-enhance.js'
+import { contractsHtml, toggleFeats } from './plan-contracts.js'
+import { tasksHtml, toggleTask, taskFromNode } from './plan-tasks.js'
+import { activityHtml, activityPill } from './plan-activity.js'
 
 /** O markdown do vault vem com frontmatter YAML — o `fm` já veio parseado à parte. */
 const body = (t) => String(t ?? '').replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, '')
@@ -18,7 +23,7 @@ function planCard(p) {
   return `<section class="card link" data-go="#/plans/${esc(p.vault)}/${esc(p.slug)}" style="cursor:pointer">
     <h2>${esc(p.slug)}<span class="n">${esc(p.vault)}</span></h2>
     <div class="t">${esc(p.title || '—')}</div>
-    <div class="row">${statusPill(p.status)}${(p.gates || []).map(gatePill).join('')}${
+    <div class="row">${activityPill(p.activity)}${statusPill(p.status)}${(p.gates || []).map(gatePill).join('')}${
       (p.ready || []).length ? `<span class="pill acc">pronto: ${esc((p.ready || []).join(', '))}</span>` : ''
     }</div>
     <div class="mrow"><span class="t">progresso</span><b>${esc(prog.done ?? '—')}/${esc(prog.total ?? '—')}</b>
@@ -27,12 +32,27 @@ function planCard(p) {
   </section>`
 }
 
+const ARCHIVED_KEY = 'jarvis:plans:archived'
+
 async function list(root, ctx) {
   setCrumb('Planos')
-  const plans = await api('/api/plans')
-  root.innerHTML = `<div class="toolbar"><h1>Planos</h1><span class="dim">${plans.length} ativos</span></div>
-    ${plans.length ? `<div class="cards">${plans.map(planCard).join('')}</div>` : '<div class="empty">nenhum plano ativo</div>'}`
+  let archived = sessionStorage.getItem(ARCHIVED_KEY) === '1'
+
+  const paint = async () => {
+    const plans = await api(`/api/plans${archived ? '?archived=1' : ''}`)
+    if (!ctx.isCurrent()) return
+    root.innerHTML = `<div class="toolbar"><h1>Planos</h1><span class="dim">${plans.length} ${archived ? 'no total' : 'ativos'}</span>
+        <button class="btn sm toggle" data-act="archived" aria-pressed="${archived}" title="incluir 30-plans/_archive">arquivados</button></div>
+      ${plans.length ? `<div class="cards">${plans.map(planCard).join('')}</div>` : '<div class="empty">nenhum plano ativo</div>'}`
+  }
+  await paint()
+
   root.addEventListener('click', (e) => {
+    if (e.target.closest('[data-act="archived"]')) {
+      archived = !archived
+      sessionStorage.setItem(ARCHIVED_KEY, archived ? '1' : '0')
+      return void paint()
+    }
     const go = e.target.closest('[data-go]')
     if (go) location.hash = go.dataset.go
   })
@@ -60,79 +80,57 @@ function actionsHtml(p) {
   return `<div class="toolbar">${b.join(' ')}</div>`
 }
 
-function tasksHtml(p) {
-  const rows = p.tasks || []
-  if (!rows.length) return '<div class="empty">sem tasks</div>'
-  return `<div class="tablewrap"><table>
-    <thead><tr><th>id</th><th>título</th><th>status</th><th>deps</th><th>pronta</th><th>escopo</th></tr></thead>
-    <tbody>${rows
-      .map(
-        (t) => `<tr>
-        <td><b>${esc(t.id)}</b>${t.gate ? ' ⛔' : ''}</td>
-        <td>${esc(t.title || '—')}</td>
-        <td>${statusPill(t.status)}</td>
-        <td class="dim">${esc((t.dependsOn || []).join(', ') || '—')}</td>
-        <td>${t.ready ? '<span class="pill acc">sim</span>' : '<span class="dim">não</span>'}</td>
-        <td class="mono dim">${esc((t.scope || []).join(' ') || '—')}</td>
-      </tr>`,
-      )
-      .join('')}</tbody></table></div>`
-}
-
-function contractsHtml(p) {
-  const rows = p.contracts || []
-  if (!rows.length) return '<div class="empty">nenhum contrato declarado</div>'
-  return rows
-    .map(
-      (c, i) => `<section class="card" data-contract="${esc(c.file)}">
-      <h2>${esc(c.file)}</h2>
-      <small class="dim">${esc(c.path || '—')}</small>
-      <div class="row">
-        <span class="pill ${c.frozen ? 'ok' : ''}">${c.frozen ? '🧊 congelado' : 'não congelado'}</span>
-        ${c.frozenAt ? `<span class="pill">${esc(new Date(c.frozenAt).toLocaleString('pt-BR'))}</span>` : ''}
-        ${c.drifted ? '<span class="pill err">drift</span>' : ''}
-        ${c.exists === false ? '<span class="pill err">ausente</span>' : ''}
-      </div>
-      <div class="row">
-        ${c.frozen ? '<button class="btn sm warn" data-act="unfreeze">descongelar</button>' : '<button class="btn sm primary" data-act="freeze">congelar</button>'}
-        <button class="btn sm" data-act="check">kb dev check</button>
-      </div>
-      <pre>${esc(c.content || '—')}</pre>
-      ${i === 0 ? '<pre data-el="kbout" hidden></pre>' : ''}
-    </section>`,
-    )
-    .join('')
-}
-
 const TABS = [
   ['plan', 'Plano'],
   ['tasks', 'Tasks'],
   ['contracts', 'Contratos'],
   ['exec', 'Execução'],
+  ['activity', 'Atividade'],
 ]
 
-async function detail(root, vault, slug, ctx) {
+async function detail(root, vault, slug, query, ctx) {
   setCrumb(`${vault}/${slug}`)
-  let tab = sessionStorage.getItem('jarvis:plantab') || 'plan'
+  const base = `/api/plans/${encodeURIComponent(vault)}/${encodeURIComponent(slug)}`
+  const q = new URLSearchParams(query || '')
+  const taskKey = `jarvis:plantask:${vault}/${slug}`
+  let tab = q.get('tab') || sessionStorage.getItem('jarvis:plantab') || 'plan'
+  let openTask = q.get('task') || sessionStorage.getItem(taskKey) || null
+  if (q.get('task')) tab = 'tasks'
+  if (!TABS.some(([k]) => k === tab)) tab = 'plan'
   let p = null
+  let act = null
 
-  const paint = async () => {
-    p = await api(`/api/plans/${encodeURIComponent(vault)}/${encodeURIComponent(slug)}`)
-    if (!ctx.isCurrent()) return
-    setCrumb(p.title || `${vault}/${slug}`)
+  const fetchAct = () => api(`${base}/activity`).catch(() => null)
+
+  const panelHtml = () => {
     const files = p.files || {}
-    const panels = {
-      plan: files.plan?.markdown ? `<div class="md">${md(body(files.plan.markdown))}</div>` : '<div class="empty">sem _plan.md</div>',
-      tasks: tasksHtml(p),
-      contracts: contractsHtml(p),
-      exec: (files.execution || []).length
+    if (tab === 'tasks') return tasksHtml(p, { open: openTask, act })
+    if (tab === 'contracts') return contractsHtml(p)
+    if (tab === 'activity') return activityHtml(act, p)
+    if (tab === 'exec')
+      return (files.execution || []).length
         ? (files.execution || [])
             .map((f) => `<section class="card"><h2>${esc(f.name)}</h2><div class="md">${md(body(f.markdown))}</div></section>`)
             .join('')
-        : '<div class="empty">nenhum log de execução</div>',
-    }
+        : '<div class="empty">nenhum log de execução</div>'
+    return files.plan?.markdown ? `<div class="md">${md(body(files.plan.markdown))}</div>` : '<div class="empty">sem _plan.md</div>'
+  }
+
+  const panel = () => root.querySelector('[data-el="panel"]')
+  const paintPanel = () => {
+    const el = panel()
+    if (!el) return
+    el.innerHTML = panelHtml()
+    void enhance(el).then(() => el.querySelector('.tasks-dag .mermaid-out')?.classList.add('dag'))
+  }
+
+  const paint = async () => {
+    ;[p, act] = await Promise.all([api(base), fetchAct()])
+    if (!ctx.isCurrent()) return
+    setCrumb(p.title || `${vault}/${slug}`)
     root.innerHTML = `<div class="toolbar">
         <h1>${esc(p.title || slug)}</h1>
+        <span data-el="actpill">${activityPill(act, { withReason: true })}</span>
         ${statusPill(p.status)}${(p.gates || []).map(gatePill).join('')}
       </div>
       <div class="row" style="margin-bottom:8px">
@@ -144,10 +142,24 @@ async function detail(root, vault, slug, ctx) {
       </div>
       ${actionsHtml(p)}
       <div class="tabs">${TABS.map(([k, l]) => `<button data-tab="${k}"${k === tab ? ' class="active"' : ''}>${l}</button>`).join('')}</div>
-      <div data-el="panel">${panels[tab] || ''}</div>`
+      <div data-el="panel"></div>`
+    paintPanel()
   }
 
   await paint()
+
+  // Atividade é inferida no servidor e muda sozinha: repinta a pill do topo a
+  // cada 10 s com a página visível, e o painel se a aba Atividade estiver aberta.
+  const timer = setInterval(async () => {
+    if (document.hidden || !ctx.isCurrent()) return
+    const a = await fetchAct()
+    if (!ctx.isCurrent() || !a) return
+    act = a
+    const pill = root.querySelector('[data-el="actpill"]')
+    if (pill) pill.innerHTML = activityPill(act, { withReason: true })
+    if (tab === 'activity') paintPanel()
+  }, 10000)
+  ctx.onLeave(() => clearInterval(timer))
 
   const kbOut = (text) => {
     const el = root.querySelector('[data-el="kbout"]')
@@ -157,7 +169,7 @@ async function detail(root, vault, slug, ctx) {
   }
 
   const runKb = async (cmd, body = {}) => {
-    const r = await guard(() => api(`/api/plans/${encodeURIComponent(vault)}/${encodeURIComponent(slug)}/kb/${cmd}`, { method: 'POST', body }))
+    const r = await guard(() => api(`${base}/kb/${cmd}`, { method: 'POST', body }))
     if (!r) return null
     toast(`kb dev ${cmd}: ${r.ok ? 'ok' : 'falhou (código ' + r.code + ')'}`, r.ok ? 'ok' : 'err')
     await paint()
@@ -166,16 +178,43 @@ async function detail(root, vault, slug, ctx) {
     return r
   }
 
+  const openTaskRow = (id, force) => {
+    const el = panel()
+    if (!el) return
+    openTask = toggleTask(el, p, id, act, { force })
+    if (openTask) sessionStorage.setItem(taskKey, openTask)
+    else sessionStorage.removeItem(taskKey)
+    void enhance(el)
+    return openTask
+  }
+
   root.addEventListener('click', async (e) => {
     const t = e.target.closest('[data-tab]')
     if (t) {
       tab = t.dataset.tab
       sessionStorage.setItem('jarvis:plantab', tab)
-      return void paint()
+      for (const b of root.querySelectorAll('[data-tab]')) b.classList.toggle('active', b.dataset.tab === tab)
+      return paintPanel()
     }
+    const cp = e.target.closest('[data-copy]')
+    if (cp) return void copy(cp.dataset.copy)
+    const row = e.target.closest('tr.task')
+    if (row) return void openTaskRow(row.dataset.task, null)
+    const gnode = e.target.closest('g.node')
+    if (gnode) {
+      const id = taskFromNode(gnode)
+      if (id && openTaskRow(id, true)) root.querySelector(`tr.task[data-task="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      return
+    }
+    const feats = e.target.closest('[data-feats]')
+    if (feats) return toggleFeats(feats)
+    const focus = e.target.closest('[data-focus]')
+    if (focus) return void guard(() => api(`/api/agents/${encodeURIComponent(focus.dataset.focus)}/focus`, { method: 'POST' }), 'pane focado')
+    const go = e.target.closest('[data-go]')
+    if (go) return void (location.hash = go.dataset.go)
+
     const act = e.target.closest('[data-act]')?.dataset.act
     if (!act) return
-    const base = `/api/plans/${encodeURIComponent(vault)}/${encodeURIComponent(slug)}`
 
     if (act === 'gate-tp') {
       const ok = await guard(() => api(`${base}/gate/TP`, { method: 'POST' }), 'gate TP aprovado')
@@ -202,10 +241,9 @@ async function detail(root, vault, slug, ctx) {
       await runKb('check')
     }
   })
-
 }
 
 export async function render(root, params, ctx) {
-  if (params.slug) return detail(root, params.vault, params.slug, ctx)
+  if (params.slug) return detail(root, params.vault, params.slug, params.query, ctx)
   return list(root, ctx)
 }

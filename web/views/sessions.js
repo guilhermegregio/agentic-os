@@ -3,6 +3,7 @@ import {
   api, esc, md, node, fmtUsd, fmtTokens, shortPath, relTime, pct, toast, guard, setCrumb,
   openStream, openSessionDialog, models, modelOptions, selectModel, isMock, refreshLive,
 } from '../app.js'
+import { enhance } from '../md-enhance.js'
 
 const MODES = [
   ['default', 'default (pergunta)'],
@@ -258,7 +259,7 @@ async function chat(root, id, ctx) {
       if (toolsOnly) continue
       if (b.type === 'text' && b.text?.trim()) {
         if (role === 'user') push(node('<div class="msg user"></div>')).textContent = b.text
-        else push(node(`<div class="msg assistant">${md(b.text)}</div>`))
+        else void enhance(push(node(`<div class="msg assistant">${md(b.text)}</div>`)))
       } else if (b.type === 'thinking' && (b.thinking || b.text)) {
         push(node('<div class="thinking"></div>')).textContent = b.thinking || b.text
       } else if (b.type === 'tool_use') {

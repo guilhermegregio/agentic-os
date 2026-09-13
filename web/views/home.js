@@ -2,7 +2,7 @@
 // quebra por campo ausente (tudo que falta vira "—").
 import { api, esc, fmtUsd, shortPath, resetIn, pct, toast, guard, setCrumb, refreshLive } from '../app.js'
 import { sparkline, hbars, meter } from '../charts.js'
-import { activityPill, stateOrder } from './plan-activity.js'
+import { activityPill, stateOrder, toMs } from './plan-activity.js'
 
 const card = (title, n, body, cls = '') =>
   `<section class="card ${cls}"><h2>${esc(title)}${n !== undefined && n !== null ? `<span class="n">${esc(n)}</span>` : ''}</h2>${body}</section>`
@@ -111,8 +111,9 @@ function wPerms(ov) {
 
 // 5b) Planos em movimento — atividade inferida por plano (herdr, sessões, CLI, git)
 function wMoving(ov) {
-  const plans = (ov.plans || []).filter((p) => p.activity && p.activity.state !== 'done')
-  plans.sort((a, b) => stateOrder(a.activity) - stateOrder(b.activity) || (b.activity.since || 0) - (a.activity.since || 0))
+  const all = ov.plans || []
+  const plans = all.filter((p) => p.activity?.state && p.activity.state !== 'done')
+  plans.sort((a, b) => stateOrder(a.activity) - stateOrder(b.activity) || toMs(b.activity.since) - toMs(a.activity.since))
   const hot = plans.filter((p) => stateOrder(p.activity) <= 2).length
   const body = plans.length
     ? `<ul class="list">${plans
@@ -123,7 +124,7 @@ function wMoving(ov) {
             ${activityPill(p.activity)}</li>`
         })
         .join('')}</ul>`
-    : empty('nenhum plano ativo')
+    : empty(all.length && !all.some((p) => p.activity?.state) ? 'atividade indisponível' : 'nenhum plano em movimento')
   return card('Planos em movimento', hot || null, body)
 }
 
@@ -273,7 +274,8 @@ export async function render(root, _params, ctx) {
     }
     const focus = e.target.closest('[data-focus]')
     if (focus) {
-      await guard(() => api(`/api/agents/${encodeURIComponent(focus.dataset.focus)}/focus`, { method: 'POST' }), 'pane focado')
+      const r = await guard(() => api(`/api/agents/${encodeURIComponent(focus.dataset.focus)}/focus`, { method: 'POST' }))
+      if (r) toast(r.ok === false ? `herdr não focou ${focus.dataset.focus}` : `pane ${focus.dataset.focus} focado`, r.ok === false ? 'err' : 'ok')
       return
     }
     const step = e.target.closest('[data-max]')

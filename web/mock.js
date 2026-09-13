@@ -112,7 +112,7 @@ const PROJECTS = [
 
 const PROJECTS_META = {
   codeDir: '/home/user/code',
-  groups: ['agent-os', 'brand-b', 'fitness', 'team'],
+  groups: [{ name: 'agent-os', title: 'Agent OS' }, { name: 'brand-b' }, { name: 'fitness', title: 'Fitness' }, { name: 'team' }],
   vaults: [
     { name: 'pessoal', path: '/home/user/code/vault-pessoal', default: true },
     { name: 'team', path: '/home/user/code/vault-team', default: false },
@@ -354,7 +354,11 @@ export async function mockApi(path, opts = {}) {
     const bad = (msg) => Object.assign(new Error(msg), { status: 400 })
     if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(name)) throw bad(`nome inválido: ${name || '(vazio)'}`)
     const path = `${PROJECTS_META.codeDir}/${name}`
-    if (PROJECTS.some((p) => p.name === name || p.path === path)) throw bad(`já existe: ${path}`)
+    if (PROJECTS.some((p) => p.path === path)) throw bad(`já existe: ${path}`)
+    // nome registrado no kb com path fora de codeDir (ex.: ds-agent)
+    const kbHit = PROJECTS.find((p) => p.name === name) || (name === 'ds-agent' ? { path: '/home/user/labs/ds-agent' } : null)
+    if (kbHit) throw bad(`nome já registrado no kb: ${name} → ${kbHit.path}`)
+    await delay(1200) // bootstrap real leva segundos (kb + graphify)
     const vault = PROJECTS_META.vaults.find((v) => v.name === body.vault) || PROJECTS_META.vaults.find((v) => v.default)
     const vaultHome = `${vault.path}/10-projects/${name}`
     // nome com "semkb" simula o kb falhando: projeto criado, mas sem registro

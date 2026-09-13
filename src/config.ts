@@ -40,6 +40,9 @@ export const CLAUDE_BIN = process.env.JARVIS_CLAUDE_BIN
 export const KB_CONFIG = process.env.JARVIS_KB_CONFIG ?? join(homedir(), '.config', 'kb', 'config.json')
 export const KB_STATE_DIR = process.env.JARVIS_KB_STATE_DIR ?? join(homedir(), '.local', 'state', 'kb')
 
+/** Onde projetos novos nascem: `<dir>/<nome>`. */
+export const CODE_DIR = process.env.JARVIS_CODE_DIR ?? join(homedir(), 'code')
+
 /** Layout do `wtree`: `<dir>/<repo>-<branch>`. */
 export const WORKTREES_DIR = process.env.JARVIS_WORKTREES_DIR ?? join(homedir(), 'code', 'worktrees')
 

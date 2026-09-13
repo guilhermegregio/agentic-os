@@ -21,8 +21,11 @@ async function planDir(vaultName: string, slug: string) {
   const cfg = await kbConfig()
   const vault = cfg.vaults.find((v) => v.name === vaultName)
   if (!vault) throw new Error(`vault desconhecido: ${vaultName}`)
-  const dir = join(vault.path, '30-plans', slug)
-  if (!existsSync(join(dir, '_plan.md'))) throw new Error(`plano não encontrado: ${slug}`)
+  // Ativo primeiro; plano arquivado ainda abre (files/contracts) a partir de _archive.
+  const dir = [join(vault.path, '30-plans', slug), join(vault.path, '30-plans', '_archive', slug)].find((d) =>
+    existsSync(join(d, '_plan.md')),
+  )
+  if (!dir) throw new Error(`plano não encontrado: ${slug}`)
   return { vault, dir }
 }
 

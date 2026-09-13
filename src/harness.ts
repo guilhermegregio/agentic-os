@@ -351,26 +351,33 @@ async function lastExecution(dir: string): Promise<PlanRow['lastExecution']> {
 /**
  * Planos ATIVOS de todos os vaults. `30-plans/_archive/**` fica de fora por
  * padrão — plano concluído é histórico, e herdar esse ruído é justamente o que
- * o protocolo do vault manda evitar. `includeArchived` para o caso explícito.
+ * o protocolo do vault manda evitar. `includeArchived` para o caso explícito:
+ * soma `30-plans/_archive/<slug>/`, e um slug que existe nos dois fica com o ativo.
  */
 export async function plans(includeArchived = false): Promise<PlanRow[]> {
   const cfg = await kbConfig()
   const frozen = await frozenContracts()
   const out: PlanRow[] = []
 
+  const subdirs = async (dir: string) =>
+    (await readdir(dir, { withFileTypes: true })).filter((d) => d.isDirectory() && d.name !== '_archive').map((d) => d.name)
+
   for (const vault of cfg.vaults) {
     const plansDir = join(vault.path, '30-plans')
-    let slugs: string[]
+    let entries: Array<{ slug: string; dir: string }>
     try {
-      slugs = (await readdir(plansDir, { withFileTypes: true }))
-        .filter((d) => d.isDirectory() && (includeArchived || d.name !== '_archive'))
-        .map((d) => d.name)
+      entries = (await subdirs(plansDir)).map((slug) => ({ slug, dir: join(plansDir, slug) }))
     } catch {
       continue
     }
+    if (includeArchived) {
+      const archiveDir = join(plansDir, '_archive')
+      const active = new Set(entries.filter((e) => existsSync(join(e.dir, '_plan.md'))).map((e) => e.slug))
+      const archived = await subdirs(archiveDir).catch(() => [] as string[])
+      for (const slug of archived) if (!active.has(slug)) entries.push({ slug, dir: join(archiveDir, slug) })
+    }
 
-    for (const slug of slugs) {
-      const dir = join(plansDir, slug)
+    for (const { slug, dir } of entries) {
       const planFile = join(dir, '_plan.md')
       let text: string
       let mtime = 0
@@ -440,7 +447,8 @@ export async function planDetail(vaultName: string, slug: string) {
   const cfg = await kbConfig()
   const vault = cfg.vaults.find((v) => v.name === vaultName)
   if (!vault) return null
-  const dir = join(vault.path, '30-plans', slug)
+  const active = join(vault.path, '30-plans', slug)
+  const dir = existsSync(join(active, '_plan.md')) ? active : join(vault.path, '30-plans', '_archive', slug)
   let body = ''
   try {
     body = parseFrontmatter(await readFile(join(dir, '_plan.md'), 'utf8')).body

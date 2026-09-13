@@ -10,6 +10,7 @@ import { AUTH_TOKEN, ENV_FILE, HOST, LOOPBACK_HOSTS, MOCK, PORT } from './config
 import * as harness from './harness.js'
 import * as herdr from './herdr.js'
 import * as planops from './planops.js'
+import * as projects from './projects.js'
 import { modelCatalog } from './pricing.js'
 import { accountSnapshot } from './probe.js'
 import { getSettings, loadSettings, updateSettings } from './settings.js'
@@ -111,6 +112,13 @@ app.patch('/api/settings', async (c) => {
 // Projetos e worktrees
 // ---------------------------------------------------------------------------
 app.get('/api/projects', async (c) => c.json(await harness.projects(c.req.query('git') !== '0')))
+app.get('/api/projects/meta', async (c) => c.json(await projects.meta()))
+app.post('/api/projects', async (c) => {
+  const body = await c.req.json<projects.CreateProjectInput>().catch(() => null)
+  if (!body || typeof body.name !== 'string') return bad(c, 'name obrigatório')
+  const r = await wrap(() => projects.create(body))
+  return r.ok ? c.json(r.v, 201) : bad(c, r.e)
+})
 app.get('/api/projects/worktrees', async (c) => {
   const path = c.req.query('path')
   if (!path) return bad(c, 'path obrigatório')

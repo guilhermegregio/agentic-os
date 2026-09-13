@@ -99,6 +99,11 @@ export interface KbConfig {
 
 let configCache: { at: number; value: KbConfig } | null = null
 
+/** Descarta o cache da config — quem acabou de escrever nela quer ver o resultado já. */
+export function invalidateConfig() {
+  configCache = null
+}
+
 export async function kbConfig(): Promise<KbConfig> {
   if (configCache && Date.now() - configCache.at < 10_000) return configCache.value
   let value: KbConfig = { vaults: [], projects: [], groups: [] }

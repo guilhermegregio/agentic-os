@@ -49,7 +49,9 @@ de agentes ficam vazios (o chat, as sessões e o painel de custos funcionam sozi
   pelo path resolvido.
 - **`herdr`** (recomendado) — multiplexador de terminais/agentes. Quando `HERDR_ENV=1`,
   o dashboard lista a frota (`herdr agent list`) e o handoff web → CLI abre um pane
-  já rodando `claude --resume`. Fora dele, o handoff só devolve o comando.
+  já rodando `claude --resume`. Fora dele, o handoff só devolve o comando e a atividade
+  dos planos vem só das sessões do Jarvis, dos transcripts do CLI e do git (`herdr: false`,
+  `agents: []`).
 - **`wtree`** (opcional) — script de worktrees em
   [gregioos](https://github.com/guilhermegregio/gregioos/blob/main/modules/scripts/wtree.nix).
   O Jarvis reproduz o mesmo layout (`~/code/worktrees/<repo>-<branch>`, `.env*` copiados,
@@ -74,13 +76,28 @@ de agentes ficam vazios (o chat, as sessões e o painel de custos funcionam sozi
   `kb:link`, tudo num commit inicial; falha do `kb` vira log e `registered: false`.
 - `src/worktrees.ts` — worktrees no layout do `wtree` (`~/code/worktrees/<repo>-<branch>`).
 - `src/herdr.ts` — frota de agentes do herdr e abertura de pane para o handoff.
-- `src/server.ts` — Hono: REST + SSE. `web/` — UI vanilla (ES modules, sem build).
+- `src/activity.ts` — atividade **inferida** por plano, nada persistido: cruza pelo cwd
+  agentes do herdr, sessões do Jarvis, transcripts do CLI, worktrees e git (commits
+  `Txx(<slug>)` na main = task mergeada). Seis estados com precedência fixa —
+  `working` › `waiting-human` › `idle` › `done` › `quiet` › `stale` (sem sinal há mais de
+  `JARVIS_ACTIVITY_STALE_HOURS`). Uma passada para todos os planos, cache de 5 s; fonte
+  que falha vira lista vazia sem derrubar a rota.
+- `src/server.ts` — Hono: REST + SSE.
+- `web/` — UI vanilla (ES modules, sem build). `md-enhance.js` enriquece tudo que passa
+  por `md()`: highlight por linguagem (gherkin pt/en incluso), barra com copiar e
+  diagramas mermaid. Detalhe do plano em `views/plans.js` com as abas em
+  `views/plan-tasks.js` (tabela, task aberta, DAG), `views/plan-contracts.js` (uma seção
+  por Funcionalidade) e `views/plan-activity.js` (atividade com refresh a cada 10 s).
+
+**Libs do cdnjs:** `marked` e `highlight.js` entram por `<script>` em `web/index.html`;
+`mermaid` é baixado sob demanda por `md-enhance.js`, só quando a página tem um bloco
+`mermaid`. Versões fixadas na URL — continua sem bundler nem `node_modules` no front.
 
 ## API
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
-| GET | `/api/overview` | conta, janelas da subscription, modelos, MCP, vivas, agentes, planos, riscos |
+| GET | `/api/overview` | conta, janelas da subscription, modelos, MCP, vivas, agentes, planos (com `activity` resumido), riscos |
 | GET | `/api/usage?days=` | custo diário, por modelo/projeto, janelas hoje/semana/mês |
 | GET | `/api/usage/sessions` | sessões dos transcripts do CLI com custo |
 | GET/PATCH | `/api/settings` | `maxRunning`, modo/modelo/cwd padrão |
@@ -89,7 +106,8 @@ de agentes ficam vazios (o chat, as sessões e o painel de custos funcionam sozi
 | POST | `/api/projects` | `{name, description?, group?, vault?}` → cria o projeto; `{name, path, vaultHome?, registered, log}` |
 | GET/POST/DELETE | `/api/projects/worktrees` | listar / criar / remover worktrees |
 | GET | `/api/agents` | agentes do herdr; `POST /api/agents/:pane/focus` |
-| GET | `/api/plans` · `/api/plans/:vault/:slug` | planos do devflow, markdown, tasks, contratos |
+| GET | `/api/plans?archived=1` · `/api/plans/:vault/:slug` | planos do devflow, markdown, tasks, contratos; a lista traz `activity` `{state, since, reason}` por plano |
+| GET | `/api/plans/:vault/:slug/activity` | atividade inferida: `state`, `reason`, `since`, `waiting`, `agents`, `sessions`, `cli`, `tasks` (worktree/branch/merged); 404 se o plano não existe |
 | POST | `/api/plans/:vault/:slug/status` | `{status, by}` (aprovar plano) |
 | POST | `/api/plans/:vault/:slug/gate/:task` | aprova gate humano (TP/TB) |
 | POST | `/api/plans/:vault/:slug/kb/:cmd` | `check` · `freeze` · `unfreeze {reason}` · `frozen` via `kb dev` |

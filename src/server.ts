@@ -5,6 +5,7 @@ import { streamSSE } from 'hono/streaming'
 import { timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { listSessions } from '@anthropic-ai/claude-agent-sdk'
+import * as activity from './activity.js'
 import { SessionManager, type UiEvent } from './agent.js'
 import { AUTH_TOKEN, ENV_FILE, HOST, LOOPBACK_HOSTS, MOCK, PORT } from './config.js'
 import * as harness from './harness.js'
@@ -19,6 +20,7 @@ import * as usage from './usage.js'
 import * as worktrees from './worktrees.js'
 
 const manager = new SessionManager()
+activity.useSessions(() => manager.list())
 const app = new Hono()
 
 const bad = (c: any, msg: string, code = 400) => c.json({ error: msg }, code)
@@ -44,6 +46,11 @@ app.use('/api/*', async (c, next) => {
 
 app.get('/api/health', (c) => c.json({ ok: true, cwd: process.cwd(), herdr: herdr.available() }))
 
+const activitySummary = (acts: Map<string, activity.Activity>, p: { vault: string; slug: string }) => {
+  const a = acts.get(`${p.vault}/${p.slug}`)
+  return a ? activity.summary(a) : null
+}
+
 // ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
@@ -56,6 +63,7 @@ app.get('/api/overview', async (c) => {
     planops.prototypes(),
     harness.kbConfig().then((cfg) => worktrees.orphans(cfg.projects.map((p) => p.path))),
   ])
+  const acts = await activity.activities(plans).catch(() => new Map<string, activity.Activity>())
   const sessions = manager.list()
   return c.json({
     generatedAt: Date.now(),
@@ -86,6 +94,7 @@ app.get('/api/overview', async (c) => {
       frozen: p.frozen.length,
       prototypeUrl: p.prototypeUrl,
       projects: p.projects,
+      activity: activitySummary(acts, p),
     })),
     repoRisk: risk,
     prototypes,
@@ -140,7 +149,18 @@ app.post('/api/agents/:pane/focus', async (c) => c.json({ ok: await herdr.focus(
 // ---------------------------------------------------------------------------
 // Console do devflow
 // ---------------------------------------------------------------------------
-app.get('/api/plans', async (c) => c.json(await harness.plans(c.req.query('archived') === '1')))
+app.get('/api/plans', async (c) => {
+  const rows = await harness.plans(c.req.query('archived') === '1')
+  const acts = await activity.activities(rows).catch(() => new Map<string, activity.Activity>())
+  return c.json(rows.map((p) => ({ ...p, activity: activitySummary(acts, p) })))
+})
+// Antes das rotas POST do mesmo prefixo: o Hono casa por ordem.
+app.get('/api/plans/:vault/:slug/activity', async (c) => {
+  const { vault, slug } = c.req.param()
+  const r = await wrap(() => activity.activity(vault, slug))
+  if (!r.ok) return bad(c, r.e, 500)
+  return r.v ? c.json(r.v) : bad(c, 'plano não encontrado', 404)
+})
 app.get('/api/plans/:vault/:slug', async (c) => {
   const { vault, slug } = c.req.param()
   const r = await wrap(async () => {

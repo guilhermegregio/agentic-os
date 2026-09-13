@@ -263,7 +263,7 @@ export interface ResolvedContract {
   legacy: boolean
 }
 
-const expandHome = (p: string) => (p.startsWith('~/') ? join(homedir(), p.slice(2)) : p === '~' ? homedir() : p)
+export const expandHome = (p: string) => (p.startsWith('~/') ? join(homedir(), p.slice(2)) : p === '~' ? homedir() : p)
 
 /**
  * Resolve uma entrada de `contracts:`. Relativa: casa do projeto no vault do plano

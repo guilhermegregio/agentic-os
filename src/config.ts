@@ -46,6 +46,9 @@ export const CODE_DIR = process.env.JARVIS_CODE_DIR ?? join(homedir(), 'code')
 /** Layout do `wtree`: `<dir>/<repo>-<branch>`. */
 export const WORKTREES_DIR = process.env.JARVIS_WORKTREES_DIR ?? join(homedir(), 'code', 'worktrees')
 
+/** Horas sem sinal até um plano sem ninguém presente passar de `quiet` para `stale`. */
+export const ACTIVITY_STALE_HOURS = Number(process.env.JARVIS_ACTIVITY_STALE_HOURS ?? 6)
+
 /** Limite inicial de sessões num turno ao mesmo tempo (ajustável ao vivo em settings). */
 export const MAX_RUNNING = Number(process.env.JARVIS_MAX_RUNNING ?? 2)
 

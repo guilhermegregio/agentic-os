@@ -175,3 +175,10 @@ body { grid-template-columns:minmax(0,1fr) }
 .md { max-width:80ch }
 /* alvo de toque: no mobile nada de 34px */
 @media (max-width: 899px) { .btn.sm, .tabs button, .chat-head select, .tool summary { min-height:var(--tap) } .tool summary { align-items:center } }
+/* diálogo de novo projeto */
+dialog .dest { margin-top:-6px; overflow-wrap:anywhere } dialog .dest .mono { color:var(--fg) }
+label.check { flex-direction:row; align-items:center; gap:10px; font-size:14px; color:var(--fg); min-height:var(--tap); cursor:pointer }
+label.check input { min-height:0; width:18px; height:18px; margin:0; accent-color:var(--acc) }
+dialog input:user-invalid { border-color:var(--err) }
+.field-err { color:var(--err); font-size:12.5px; margin-top:-6px; overflow-wrap:anywhere }
+dialog input[aria-invalid] { border-color:var(--err) }

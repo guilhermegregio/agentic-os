@@ -110,6 +110,15 @@ const PROJECTS = [
   { name: 'app-d', path: '/home/user/code/app-d', exists: true, monorepo: false, subprojects: [], groups: ['team'], git: { branch: 'main', dirty: 0, ahead: 3 }, hasClaudeMd: true, hasGraph: false },
 ]
 
+const PROJECTS_META = {
+  codeDir: '/home/user/code',
+  groups: ['agent-os', 'brand-b', 'fitness', 'team'],
+  vaults: [
+    { name: 'pessoal', path: '/home/user/code/vault-pessoal', default: true },
+    { name: 'team', path: '/home/user/code/vault-team', default: false },
+  ],
+}
+
 const WORKTREES = {
   '/home/user/code/jarvis': [
     { path: '/home/user/code/jarvis', head: '68bd810', branch: 'main', isMain: true, exists: true, dirty: 0 },
@@ -338,6 +347,34 @@ export async function mockApi(path, opts = {}) {
   if (route === '/api/settings') {
     if (method === 'PATCH') Object.assign(state.settings, body)
     return clone(state.settings)
+  }
+  if (route === '/api/projects/meta') return clone(PROJECTS_META)
+  if (route === '/api/projects' && method === 'POST') {
+    const name = String(body.name || '').trim()
+    const bad = (msg) => Object.assign(new Error(msg), { status: 400 })
+    if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(name)) throw bad(`nome inválido: ${name || '(vazio)'}`)
+    const path = `${PROJECTS_META.codeDir}/${name}`
+    if (PROJECTS.some((p) => p.name === name || p.path === path)) throw bad(`já existe: ${path}`)
+    const vault = PROJECTS_META.vaults.find((v) => v.name === body.vault) || PROJECTS_META.vaults.find((v) => v.default)
+    const vaultHome = `${vault.path}/10-projects/${name}`
+    // nome com "semkb" simula o kb falhando: projeto criado, mas sem registro
+    const registered = !name.includes('semkb')
+    PROJECTS.push({ name, path, exists: true, monorepo: false, subprojects: [], groups: body.group ? [body.group] : [], git: { branch: 'main', dirty: 0, ahead: 0 }, hasClaudeMd: true, hasGraph: true })
+    const log = [
+      `$ git init -b main ${path}`,
+      `Initialized empty Git repository in ${path}/.git/`,
+      `README.md escrito (${body.description ? 'com a descrição' : 'só o título'})`,
+      `$ kb project add ${path}${body.group ? ` --group ${body.group}` : ''}`,
+      registered ? `✓ ${name} registrado no grafo central` : '✗ kb project add falhou: grafo central indisponível',
+      `$ kb new --type project ${name} --vault ${vault.name}`,
+      `✓ ${vaultHome}/_project.md`,
+      `$ kb project link-claude ${path}`,
+      '✓ CLAUDE.md com ponteiro para o vault',
+      `$ kb vault index ${vault.name}`,
+      `$ git -C ${path} commit -m "chore: projeto ${name}"`,
+      `[main (root-commit) 1a2b3c4] chore: projeto ${name}`,
+    ]
+    return { name, path, vaultHome, registered, log }
   }
   if (route === '/api/projects') return clone(PROJECTS)
   if (route === '/api/projects/worktrees') {

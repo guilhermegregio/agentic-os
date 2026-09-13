@@ -2,6 +2,7 @@
 // gerado no cliente) + tabela com linha expansível mostrando o frontmatter
 // estruturado e o corpo do tasks/Txx.md.
 import { esc, md, relTime } from '../app.js'
+import { toMs } from './plan-activity.js'
 
 const body = (t) => String(t ?? '').replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, '')
 
@@ -53,7 +54,7 @@ function detailHtml(t, file, act) {
         ta.sessions ? `<span class="pill acc">${ta.sessions} sessão${ta.sessions > 1 ? 'ões' : ''}</span>` : '',
         ta.worktreeExists ? `<span class="pill" title="${esc(ta.worktree || '')}">worktree existe</span>` : ta.branchExists ? '<span class="pill">branch sem worktree</span>' : '',
         ta.merged ? '<span class="pill ok">mergeada na main</span>' : '',
-        ta.lastCommitTs ? `<span class="pill">último commit ${esc(relTime(ta.lastCommitTs))}</span>` : '',
+        ta.lastCommitTs ? `<span class="pill">último commit ${esc(relTime(toMs(ta.lastCommitTs)))}</span>` : '',
       ]
         .filter(Boolean)
         .join('')
@@ -117,5 +118,5 @@ export function toggleTask(panel, p, id, act = null, { force = null } = {}) {
   return opened
 }
 
-/** id da task a partir do nó do SVG do mermaid (`flowchart-T01-3`). */
-export const taskFromNode = (g) => /^flowchart-([A-Za-z0-9_]+)-\d+$/.exec(g?.id || '')?.[1] || null
+/** id da task a partir do nó do SVG do mermaid (`flowchart-T01-3`; o 11.x prefixa com o id do render: `mm-…-flowchart-T01-3`). */
+export const taskFromNode = (g) => /(?:^|-)flowchart-([A-Za-z0-9_]+)-\d+$/.exec(g?.id || '')?.[1] || null

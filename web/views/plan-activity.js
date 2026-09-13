@@ -13,12 +13,16 @@ export const STATES = {
 }
 export const stateOrder = (a) => STATES[a?.state]?.order ?? 9
 
+/** `since`/`lastTs` chegam como epoch ms; aceita ISO também, sem virar "—". */
+export const toMs = (ts) => (typeof ts === 'string' && !/^\d+$/.test(ts) ? Date.parse(ts) : Number(ts)) || 0
+const ago = (ts) => relTime(toMs(ts))
+
 /** Pill compacta: `● trabalhando`, `⏸ aguardando você`, `○ parado há 2 d`. */
 export function activityPill(a, { withReason = false } = {}) {
   if (!a || !a.state) return '<span class="pill dim" title="atividade indisponível">—</span>'
   const s = STATES[a.state] || { icon: '', label: a.state, cls: '' }
-  const when = (a.state === 'stale' || a.state === 'quiet') && a.since ? ` ${esc(relTime(a.since))}` : ''
-  return `<span class="pill ${s.cls} plan-act" title="${esc(a.reason || s.label)}"><i class="dot ${s.icon}"></i>${s.label}${when}${
+  const when = (a.state === 'stale' || a.state === 'quiet') && a.since ? ` ${esc(ago(a.since))}` : ''
+  return `<span class="pill ${s.cls} plan-act" title="${esc(a.reason || s.label)}"><i class="dot ${s.icon}"></i>${esc(s.label)}${when}${
     withReason && a.reason ? ` <span class="dim">· ${esc(a.reason)}</span>` : ''
   }</span>`
 }
@@ -83,7 +87,7 @@ function cliHtml(a) {
     rows.length,
     `<ul class="list">${rows
       .map(
-        (c) => `<li><span class="t">${esc(c.title || c.sessionId)}<small>${esc(relTime(c.lastTs))} · ${esc(shortPath(c.cwd))}</small></span>
+        (c) => `<li><span class="t">${esc(c.title || c.sessionId)}<small>${esc(ago(c.lastTs))} · ${esc(shortPath(c.cwd))}</small></span>
         ${taskTag(c.task)}<button class="btn sm" data-copy="claude --resume ${esc(c.sessionId)}" title="copiar claude --resume">resume</button></li>`,
       )
       .join('')}</ul>`,
@@ -92,7 +96,7 @@ function cliHtml(a) {
 
 function tasksHtml(a) {
   const rows = a.tasks || []
-  if (!rows.length) return ''
+  if (!rows.length) return card('Tasks × git', null, empty('nenhuma task com branch neste plano'), 'wide')
   return card(
     'Tasks × git',
     null,
@@ -104,7 +108,7 @@ function tasksHtml(a) {
           <td><b>${esc(t.id)}</b></td>
           <td>${esc(t.status || '—')}</td>
           <td class="mono dim">${esc(t.branch || '—')}${t.branch && !t.branchExists ? ' <span class="pill">não criada</span>' : ''}</td>
-          <td>${t.worktreeExists ? `<span class="pill" title="${esc(t.worktree || '')}">existe</span>${t.lastCommitTs ? `<small class="dim"> commit ${esc(relTime(t.lastCommitTs))}</small>` : ''}` : '<span class="dim">—</span>'}</td>
+          <td>${t.worktreeExists ? `<span class="pill" title="${esc(t.worktree || '')}">existe</span>${t.lastCommitTs ? `<small class="dim"> commit ${esc(ago(t.lastCommitTs))}</small>` : ''}` : '<span class="dim">—</span>'}</td>
           <td>${t.merged ? '<span class="pill ok">mergeada</span>' : '<span class="dim">—</span>'}</td>
           <td>${t.agents ? `<span class="pill ok">${t.agents} agente</span>` : ''}${t.sessions ? ` <span class="pill acc">${t.sessions} sessão</span>` : ''}${!t.agents && !t.sessions ? '<span class="dim">ninguém</span>' : ''}</td>
         </tr>`,
@@ -119,7 +123,7 @@ export function activityHtml(a, p) {
   if (!a) return '<div class="empty">atividade indisponível (o servidor não respondeu)</div>'
   const s = STATES[a.state] || { icon: '', label: a.state || '—', cls: '' }
   return `<div class="act-hero">
-      <div class="state"><i class="dot ${s.icon}"></i>${esc(s.label)}${a.since ? `<span class="pill">último sinal ${esc(relTime(a.since))}</span>` : ''}</div>
+      <div class="state"><i class="dot ${s.icon}"></i>${esc(s.label)}${a.since ? `<span class="pill">último sinal ${esc(ago(a.since))}</span>` : ''}</div>
       <div class="why">${esc(a.reason || '—')}</div>
       <div class="note">inferido de herdr, sessões web, transcripts do CLI, worktrees e git — nada é persistido; cwd casando não prova que o agente está nesta task. Atualiza a cada 10 s.</div>
     </div>

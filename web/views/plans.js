@@ -100,7 +100,13 @@ async function detail(root, vault, slug, query, ctx) {
   let p = null
   let act = null
 
-  const fetchAct = () => api(`${base}/activity`).catch(() => null)
+  // 404 = backend sem a rota: não adianta insistir a cada 10 s (recarregar tenta de novo)
+  let actMissing = false
+  const fetchAct = () =>
+    api(`${base}/activity`).catch((e) => {
+      if (e?.status === 404 || /\(404\)/.test(e?.message || '')) actMissing = true
+      return null
+    })
 
   const panelHtml = () => {
     const files = p.files || {}
@@ -151,7 +157,7 @@ async function detail(root, vault, slug, query, ctx) {
   // Atividade é inferida no servidor e muda sozinha: repinta a pill do topo a
   // cada 10 s com a página visível, e o painel se a aba Atividade estiver aberta.
   const timer = setInterval(async () => {
-    if (document.hidden || !ctx.isCurrent()) return
+    if (document.hidden || actMissing || !ctx.isCurrent()) return
     const a = await fetchAct()
     if (!ctx.isCurrent() || !a) return
     act = a
@@ -209,7 +215,11 @@ async function detail(root, vault, slug, query, ctx) {
     const feats = e.target.closest('[data-feats]')
     if (feats) return toggleFeats(feats)
     const focus = e.target.closest('[data-focus]')
-    if (focus) return void guard(() => api(`/api/agents/${encodeURIComponent(focus.dataset.focus)}/focus`, { method: 'POST' }), 'pane focado')
+    if (focus) {
+      const r = await guard(() => api(`/api/agents/${encodeURIComponent(focus.dataset.focus)}/focus`, { method: 'POST' }))
+      if (r) toast(r.ok === false ? `herdr não focou ${focus.dataset.focus}` : `pane ${focus.dataset.focus} focado`, r.ok === false ? 'err' : 'ok')
+      return
+    }
     const go = e.target.closest('[data-go]')
     if (go) return void (location.hash = go.dataset.go)
 

@@ -138,14 +138,16 @@ async function copyText(text, el) {
     return true
   } catch {
     // sem clipboard (http fora do loopback, permissão negada): seleciona para o usuário copiar
-    if (el) {
-      const r = document.createRange()
-      r.selectNodeContents(el)
-      const sel = getSelection()
-      sel.removeAllRanges()
-      sel.addRange(r)
+    if (!el) {
+      toast(`sem acesso à área de transferência — copie manualmente: ${text.slice(0, 200)}`, 'err')
+      return false
     }
-    toast('sem acesso à área de transferência: texto selecionado', 'err')
+    const r = document.createRange()
+    r.selectNodeContents(el)
+    const sel = getSelection()
+    sel.removeAllRanges()
+    sel.addRange(r)
+    toast('sem acesso à área de transferência: texto selecionado para cópia manual', 'err')
     return false
   }
 }

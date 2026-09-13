@@ -338,6 +338,15 @@ const PLANS = [
     lastExecution: null, path: '/home/user/code/vault-team/30-plans/billing-metadata',
     activity: { state: 'stale', since: now - 2 * DAY, reason: 'parado há 2 d — última atividade no CLI' },
   },
+  {
+    slug: 'kb-doctor', vault: 'pessoal', visibility: 'private',
+    title: 'kb doctor — diagnóstico do workspace', status: 'done',
+    projects: ['kb-cli'], groups: ['agent-os'], stack: ['node'],
+    progress: { done: 3, total: 3, source: 'tasks' }, tasks: [], ready: [], openGates: 0,
+    frozen: [], contracts: [], prototypeUrl: null, worktree: null, approvedBy: 'user', gates: [],
+    lastExecution: { day: ymd(now - 4 * DAY), ts: now - 4 * DAY }, path: '/home/user/code/vault-pessoal/30-plans/kb-doctor',
+    activity: { state: 'done', since: now - 4 * DAY, reason: 'concluído' },
+  },
 ]
 
 // Só com ?archived=1 (30-plans/_archive/**): histórico, não ruído na lista.
@@ -392,7 +401,7 @@ const ACTIVITY = {
     lastExecution: { day: ymd(now - DAY), ts: now - DAY },
   },
   'team/billing-metadata': {
-    state: 'stale', since: now - 2 * DAY, reason: 'parado há 2 d — última atividade no CLI', herdr: true,
+    state: 'stale', since: now - 2 * DAY, reason: 'parado há 2 d — última atividade no CLI', herdr: false,
     waiting: [], agents: [], sessions: [],
     cli: [{ sessionId: '00000000-0000-4000-8000-000000000003', cwd: '/home/user/code/app-c/apps/brand-a', lastTs: now - 2 * DAY, title: 'Tokens do brand-a', task: null }],
     tasks: [
@@ -630,6 +639,55 @@ graph LR
 \`\`\`bash
 kb source add ./pdfs/*.pdf --vault team --tag acervo
 \`\`\`
+
+## Saída sem linguagem e com linguagem desconhecida
+
+\`\`\`
+71 arquivos · 12 sem texto (OCR)
+\`\`\`
+
+\`\`\`brainfuck
+++++[>++++<-]>.
+\`\`\`
+
+## HTML literal (não pode chegar ao DOM)
+
+<svg id="svg-literal" width="10" height="10"><circle r="5"/></svg>
+<script>window.__xss = 1</script>
+`
+
+// 2 "Cenário" + 1 "Esquema do Cenário" = 3; "Cenários:" é sinônimo de Exemplos e não conta.
+const PDFS_CONTRACT = `---
+id: team-contract-pdfs
+type: contract
+---
+
+# Contrato — pdfs
+
+## Funcionalidade: Extração
+
+\`\`\`gherkin
+# language: pt
+@acervo
+Funcionalidade: Extração
+
+  Cenário: PDF com texto
+    Dado um PDF "manual.pdf" com camada de texto
+    Então o markdown sai do pdftotext
+
+  Cenário: PDF escaneado
+    Dado um PDF sem texto
+    Então o OCR roda
+
+  Esquema do Cenário: frontmatter por tipo
+    Dado um PDF do tipo <tipo>
+    Então o frontmatter tem type <type>
+
+    Cenários:
+      | tipo    | type   |
+      | manual  | source |
+      | artigo  | paper  |
+\`\`\`
 `
 
 // --- estado mutável do mock ------------------------------------------------
@@ -743,7 +801,14 @@ export async function mockApi(path, opts = {}) {
       const p = [...PLANS, ...ARCHIVED].find((x) => x.vault === vault && x.slug === slug)
       if (!p) throw Object.assign(new Error('plano não encontrado'), { status: 404 })
       const markdown = slug === 'pdfs-para-markdown' ? PDFS_PLAN_MD : `## ${p.title}\n\nPlano de exemplo do mock.\n`
-      return { ...clone(p), prototypeUp: p.prototypeUrl ? false : null, files: { plan: { name: '_plan.md', path: p.path + '/_plan.md', markdown, fm: {} }, tasks: [], execution: [] }, contracts: [] }
+      const contracts =
+        slug === 'pdfs-para-markdown'
+          ? [
+              { file: 'behaviors.feature', path: '/home/user/code/vault-team/10-projects/app-b/behaviors/pdfs.feature.md', exists: true, legacy: false, content: PDFS_CONTRACT, frozen: true, frozenAt: iso(now - 2 * DAY), drifted: true },
+              { file: 'app-b/behaviors/indice.feature.md', path: '/home/user/code/vault-team/10-projects/app-b/behaviors/indice.feature.md', exists: false, legacy: false, content: null, frozen: false, frozenAt: null, drifted: false, warning: 'contrato declarado mas o arquivo não existe' },
+            ]
+          : []
+      return { ...clone(p), prototypeUp: p.prototypeUrl ? false : null, files: { plan: { name: '_plan.md', path: p.path + '/_plan.md', markdown, fm: {} }, tasks: [], execution: [] }, contracts }
     }
     if (rest === '/status') {
       state.planStatus[`${vault}/${slug}`] = body.status
@@ -801,7 +866,7 @@ const SCRIPT = [
   [900, 'sdk', { msg: { type: 'assistant', message: { content: [{ type: 'text', text: 'Vou começar lendo o **shell** já existente para reaproveitar as classes do CSS.\n\n- `web/index.html`\n- `web/app.css`' }] } } }],
   [800, 'sdk', { msg: { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'toolu_mock1', name: 'Read', input: { file_path: '/home/user/code/jarvis/web/app.css' } }] } } }],
   [900, 'sdk', { msg: { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_mock1', content: '1→/* ---------- tokens ---------- */\n2→:root { --bg:#0f1115; … }\n(+180 linhas)' }] } } }],
-  [800, 'sdk', { msg: { type: 'assistant', message: { content: [{ type: 'text', text: 'Agora crio `web/views/home.js` com os widgets na ordem de importância.' }] } } }],
+  [800, 'sdk', { msg: { type: 'assistant', message: { content: [{ type: 'text', text: 'Agora crio `web/views/home.js` com os widgets na ordem de importância:\n\n```js\nexport async function render(root) {\n  root.innerHTML = cards.join(\'\')\n}\n```' }] } } }],
   [700, 'permission_request', { id: 'perm_mock1', toolName: 'Write', input: { file_path: '/home/user/code/jarvis/web/views/home.js', content: 'export async function render(root) { … }' }, title: 'Escrever web/views/home.js', description: 'Cria a view do dashboard', decisionReason: 'arquivo novo fora da allowlist', hasSuggestions: true }],
   [2600, 'sdk', { msg: { type: 'assistant', message: { content: [{ type: 'text', text: 'Arquivo criado. O dashboard já renderiza as três janelas com meter e horário de reset.' }] } } }],
   [600, 'usage', { usage: mkUsage(4.9012, 431000, 1000000, 18) }],

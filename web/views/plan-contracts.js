@@ -6,7 +6,8 @@ import { esc, md } from '../app.js'
 /** O markdown do vault vem com frontmatter YAML — fora daqui só o corpo. */
 const body = (t) => String(t ?? '').replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, '')
 
-const SCENARIO = /^\s*(Cenário|Cenários|Esquema do Cenário|Delineação do Cenário|Scenario Outline|Scenario Template|Scenarios|Scenario)\s*:/gm
+// "Cenários:" (pt) e "Scenarios:" (en) são sinônimos de Exemplos — não contam.
+const SCENARIO = /^[ \t]*(Cenário|Esquema do Cenário|Delineação do Cenário|Scenario Outline|Scenario Template|Scenario)[ \t]*:/gm
 export const countScenarios = (text) => (String(text ?? '').match(SCENARIO) || []).length
 
 /**
@@ -49,7 +50,7 @@ function contractCard(c, i) {
     )
     .join('')
   return `<section class="card" data-contract="${esc(c.file)}">
-    <h2>${esc(c.file)}<span class="n">${feats.length ? `${feats.length} func. · ${total} cenários` : ''}</span></h2>
+    <h2>${esc(c.file)}<span class="n">${feats.length ? `${feats.length} func. · ${total} cenário${total === 1 ? '' : 's'}` : ''}</span></h2>
     <small class="dim">${esc(c.path || '—')}</small>
     <div class="row">
       <span class="pill ${c.frozen ? 'ok' : ''}">${c.frozen ? '🧊 congelado' : 'não congelado'}</span>
@@ -63,7 +64,7 @@ function contractCard(c, i) {
       <button class="btn sm" data-act="check">kb dev check</button>
       ${feats.length > 1 ? `<span class="spacer" style="flex:1"></span><button class="btn sm" data-feats="toggle">${startOpen ? 'recolher tudo' : 'expandir tudo'}</button>` : ''}
     </div>
-    ${c.warning && c.exists === false ? `<div class="empty">${esc(c.warning)}</div>` : ''}
+    ${c.exists === false ? `<div class="empty">${esc(c.warning || `contrato declarado em contracts: mas o arquivo não existe (${c.path || c.file})`)}</div>` : ''}
     ${intro && intro.text.trim() ? `<div class="md intro">${md(intro.text)}</div>` : ''}
     ${featsHtml || (c.content && !feats.length ? `<div class="md">${md(body(c.content))}</div>` : '')}
     ${i === 0 ? '<pre data-el="kbout" hidden></pre>' : ''}
